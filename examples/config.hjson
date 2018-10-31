@@ -1,0 +1,111 @@
+## [] run the server
+## [] be able to connect to rmq and get messages (thrown)
+## [] basic reactor (hardcoded response)
+## [] reactor: custom message reactor
+## [] reactor: message sequence
+## [] custom message reactor
+## [] generators
+{
+  connections: [
+    {
+      key: 1
+      host: localhost
+      port: 5672
+      vhost: /
+      ssl: false # default
+    },
+    {
+      key: 2
+      host: localhost
+      port: 5672
+      vhost: /
+      ssl: false # default
+    }
+  ]
+  imposters: [
+    {
+      name: toto
+      reactors: [
+        {
+          channel: {
+            connectionRef: 1
+            exchange: ex.name
+            queue: qe-name
+            routingKey: sample.message
+          }
+          validator: "some json schema key"
+          matcher: { # body matcher
+            path: "extracted value will be casted as <type>"
+            type: "" # can be number, string (default), array (not supported?)
+            operator: "" # = < > <= >= !=
+            value: "will be casted as <type>"
+            # could we define props matcher?
+          }
+          action: {
+            messages: [
+              {
+                delay: 0 # default value, useless
+                content: xxx # file key containing the message
+                tokens: [ # tokens to replace inside the file
+                  { 
+                    key: xxx
+                    value: hardcoded 
+                  }, # value is hardcoded
+                  { 
+                    key: uuid, 
+                    extractedValue : some json path
+                  }, # value is found in initial message's body
+                  { 
+                    key: correlation-id
+                    propertyValue : correlation_id
+                  }, # value is found in initial message's props
+                  { 
+                    key: message-id, 
+                    generatedValue : <uuid>
+                  }, # value is generated
+                ]
+                to: {
+                  exchange: response.ex
+                  routingKey: resp.r.k
+                }
+              },
+            ]
+          }
+        },
+      ]
+    },
+    {
+      name: generator
+      channel: {
+        connectionRef: 2
+        # nothing declared: just a publish channel
+      }
+      generators: [
+        {
+          schedule: "cron expression"
+          action: {
+            messages: [
+              {
+                content: "" 
+                tokens: [ # tokens to replace inside the file
+                  { 
+                    key: correlation-id
+                    generatedValue: <uuid>
+                  },
+                  { 
+                    key: message-id
+                    generatedValue: <uuid>
+                  },
+                ]
+                to: {
+                  exchange: response.exchange
+                  routingKey: routing.key
+                }
+              },
+            ]
+          }
+        },
+      ]
+    },
+  ]
+}

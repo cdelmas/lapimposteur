@@ -1,0 +1,26 @@
+Overview
+
+bin -> the server. Runs an amqp service, (with a control channel [experimental]). Configured by file, or dynamically using ctl [experimental].
+lib -> defines the commands that the server accepts. Used by both bin and ctl.
+[experimental] ctl -> server control cli. Sends commands to the server.
+
+Commands:
+- bind queue to exchange on routing key
+- on message (exchange/routing key), react* | define matchers for messages
+- generate messages (schedule: random or regular) using a template
+
+react can be:
+- send a response immediately (using replyTo if necessary)
+- send a response later
+- send a sequence
+- generate error randomly
+
+note:
+- use schema to validate input message?
+
+matchers:
+- json path
+
+
+exemple config in config.toml
+

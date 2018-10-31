@@ -1,0 +1,18 @@
+[package]
+name = "lapimposteur-lib"
+version = "0.1.0"
+authors = ["Cyril Delmas <c.delmas@lectra.com>"]
+
+[lib]
+
+[dependencies]
+futures = "0.1.25"
+lapin-futures = "0.14.0"
+log = "0.4.6"
+rust-crypto = "0.2"
+tokio = "0.1.11"
+
+[features]
+unstable = []
+experimental = []
+deprecated = []
