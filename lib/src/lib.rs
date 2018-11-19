@@ -4,4 +4,5 @@ extern crate lapin_futures as lapin;
 extern crate log;
 extern crate tokio;
 
+pub mod model;
 pub mod server;
