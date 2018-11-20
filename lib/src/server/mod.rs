@@ -1,4 +1,4 @@
-use failure::Error;
+use failure::{err_msg, Error};
 use futures::future::lazy;
 use futures::IntoFuture;
 use lapin::client;
@@ -49,12 +49,14 @@ fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
   trace!("Opening a TCP connection to {}", addr);
   Box::new(
     TcpStream::connect(&addr)
-      .and_then(|stream| client::Client::connect(stream, amqp_connection))
+      .map_err(Error::from)
+      .and_then(|stream| client::Client::connect(stream, amqp_connection).map_err(Error::from))
       .and_then(|(client, heartbeat)| {
-        tokio::spawn(heartbeat.map_err(|e| warn!("heartbeat error: {:?}", e)));
-        futures::future::ok(client)
-      }).map_err(Error::from)
-      .into_future(),
+        tokio::spawn(heartbeat.map_err(|e| warn!("heartbeat error: {:?}", e)))
+          .into_future()
+          .map(|_| client)
+          .map_err(|_| err_msg("Could not spawn the heartbeat"))
+      }).into_future(),
   )
 }
 
