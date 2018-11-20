@@ -26,7 +26,7 @@ fn bootstrap(connection_info: ConnectionInfo) {
         .map(|_| {
           debug!("Successfully connected");
           ()
-        }).map_err(|e| error!("{}", e)),
+        }).map_err(|e| error!("Could not connect to RabbitMQ: {}", e)),
     );
     Ok(())
   }))
