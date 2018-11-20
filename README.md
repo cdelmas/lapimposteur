@@ -18,7 +18,7 @@ lib -> defines the commands that the server accepts. Used by both bin and ctl.
 
 ## Troubleshooting
 
-## Contributing
+## Contributing TODO: extract to a new file
 
 ### How to build?
 

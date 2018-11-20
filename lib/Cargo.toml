@@ -6,6 +6,7 @@ authors = ["Cyril Delmas <c.delmas@lectra.com>"]
 [lib]
 
 [dependencies]
+failure = "0.1.3"
 futures = "0.1.25"
 lapin-futures = "0.14.0"
 log = "0.4.6"

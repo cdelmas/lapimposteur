@@ -1,3 +1,4 @@
+use failure::Error;
 use futures::future::lazy;
 use futures::IntoFuture;
 use lapin::client;
@@ -5,7 +6,6 @@ use model::ConnectionInfo;
 use std::env;
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
-use tokio::io;
 use tokio::net::TcpStream;
 use tokio::prelude::Future;
 
@@ -32,7 +32,7 @@ fn bootstrap(connection_info: ConnectionInfo) {
   }))
 }
 
-type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = io::Error> + Send>;
+type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = Error> + Send>;
 
 fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
   let amqp_connection = client::ConnectionOptions {
@@ -53,7 +53,8 @@ fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
       .and_then(|(client, heartbeat)| {
         tokio::spawn(heartbeat.map_err(|e| warn!("heartbeat error: {:?}", e)));
         futures::future::ok(client)
-      }).into_future(),
+      }).map_err(Error::from)
+      .into_future(),
   )
 }
 
