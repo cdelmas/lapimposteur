@@ -32,6 +32,30 @@ impl FromStr for ConnectionInfo {
   }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct QueueBinding {
+  pub queue_name: QueueName,
+  pub routing_key: RoutingKey,
+  pub exchange_name: ExchangeName,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct QueueName(pub String);
+#[derive(Debug, PartialEq, Clone)]
+pub struct RoutingKey(pub String);
+#[derive(Debug, PartialEq, Clone)]
+pub struct ExchangeName(pub String);
+
+impl QueueBinding {
+  pub fn new(queue_name: QueueName, routing_key: RoutingKey, exchange_name: ExchangeName) -> Self {
+    QueueBinding {
+      queue_name,
+      routing_key,
+      exchange_name,
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -69,5 +93,4 @@ mod tests {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), expected);
   }
-
 }
