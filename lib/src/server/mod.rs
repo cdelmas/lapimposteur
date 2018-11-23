@@ -5,7 +5,8 @@ use futures::Stream;
 use lapin::channel;
 use lapin::client;
 use lapin::types::FieldTable;
-use model::*;
+use model::amqp::*;
+use model::imposter::*;
 use std::env;
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
@@ -39,10 +40,16 @@ fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
 
 type ImposterFuture = Box<Future<Item = (), Error = Error> + Send>;
 
+// NOTE: the queue binding will eventually be wrapped into a reactor imposter config
 fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -> ImposterFuture {
   let queue_name = bindings.queue_name.0.clone();
   let exchange_name = bindings.exchange_name.0.clone();
   let routing_key = bindings.routing_key.0.clone();
+
+  let message_printer = ReactorImposter::new(|message| {
+    info!("{}", message.0);
+    Action::DoNothing
+  });
 
   Box::new(
     client
@@ -71,9 +78,7 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
             FieldTable::new(),
           ).map(|_| (channel, queue))
       }).and_then(move |(channel, queue)| {
-        // ReactorImposter
-        // NOTE: this is a ReactorImposter Consumer
-        debug!("creating a consumer");
+        debug!("creating a consumer for the imposter");
         channel
           .basic_consume(
             &queue,
@@ -83,14 +88,10 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
           ).map(|stream| (channel, stream))
       }).and_then(move |(channel, stream)| {
         stream.for_each(move |message| {
-          // NOTE this is the imposter function -> trait Imposter : Message -> Result<Option<Response>, Error> ; in all cases, ack the message
-          println!(
-            "consumer got '{}'",
-            std::str::from_utf8(&message.data).unwrap()
-          );
-          // end of function
-
-          // handling response
+          match message_printer.react(InputMessage(std::str::from_utf8(&message.data).unwrap())) {
+            Action::DoNothing => debug!("Do Nothing!"),
+            _ => debug!("Send Something"),
+          }
           channel.basic_ack(message.delivery_tag, false)
         })
       }).map_err(Error::from),
