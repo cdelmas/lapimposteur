@@ -117,10 +117,33 @@ mod tests {
   #[test]
   fn should_swallow_input_and_return_nothing() {
     let input = String::from("{}");
+    struct Anonymous;
+    impl ReactorImposter for Anonymous {
+      fn react(&self, _: InputMessage) -> Action {
+        DoNothing
+      }
+    }
+    let anonymous_reactor_imposter = Anonymous;
 
-    let result = ReactorImposter::new(move |_| DoNothing).react(InputMessage(&input));
+    let result = anonymous_reactor_imposter.react(InputMessage(&input));
 
     assert_eq!(DoNothing, result);
   }
 
+  #[test]
+  fn should_run_the_first_of_the_chain() {
+    let reactor1 = imposters::LoggerReactor;
+    let reactor2 = imposters::FnReactor::new(move |_| {
+      SendMsg(MessageDispatch {
+        message: Message::new(Body(String::from("nuclear bom")), Headers::empty()),
+        delay: Schedule::Now,
+      })
+    });
+    let chain = ImposterChain::new(&[&reactor1, &reactor2]);
+
+    let result = chain.run(InputMessage("a message"));
+
+    assert!(result.is_some());
+    assert_eq!(DoNothing, result.unwrap());
+  }
 }
