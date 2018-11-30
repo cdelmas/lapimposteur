@@ -6,6 +6,7 @@ use lapin::channel;
 use lapin::client;
 use lapin::types::FieldTable;
 use model::amqp::*;
+use model::imposter::imposters::*;
 use model::imposter::*;
 use std::env;
 use std::net::ToSocketAddrs;
@@ -46,9 +47,14 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
   let exchange_name = bindings.exchange_name.0.clone();
   let routing_key = bindings.routing_key.0.clone();
 
-  let message_printer = ReactorImposter::new(|message| {
+  let message_printer = LoggerReactor;
+
+  let respond_hardcoded = FnReactor::new(|message| {
     info!("{}", message.0);
-    Action::DoNothing
+    Action::SendMsg(MessageDispatch {
+      message: Message::new(Body(String::from("some text")), Headers::empty()),
+      delay: Schedule::Now,
+    })
   });
 
   Box::new(
@@ -88,10 +94,10 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
           ).map(|stream| (channel, stream))
       }).and_then(move |(channel, stream)| {
         stream.for_each(move |message| {
-          match message_printer.react(InputMessage(std::str::from_utf8(&message.data).unwrap())) {
-            Action::DoNothing => debug!("Do Nothing!"),
-            _ => debug!("Send Something"),
-          }
+          // message_printer should be a parameter of the function (*)
+          let action =
+            respond_hardcoded.react(InputMessage(std::str::from_utf8(&message.data).unwrap()));
+          interpret_action(&channel, action);
           channel.basic_ack(message.delivery_tag, false)
         })
       }).map_err(Error::from),
@@ -99,6 +105,14 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
 }
 
 type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = Error> + Send>;
+
+fn interpret_action(_channel: &channel::Channel<TcpStream>, action: Action) {
+  // interpret action is really a Action -> AmqpStuff function
+  match action {
+    Action::DoNothing => debug!("Doing nothing"),
+    _ => debug!("Doing something"),
+  }
+}
 
 fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
   let amqp_connection = client::ConnectionOptions {
