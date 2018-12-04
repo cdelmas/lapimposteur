@@ -47,12 +47,14 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
   let exchange_name = bindings.exchange_name.0.clone();
   let routing_key = bindings.routing_key.0.clone();
 
-  let message_printer = LoggerReactor;
-
   let respond_hardcoded = FnReactor::new(|message| {
     info!("{}", message.0);
     Action::SendMsg(MessageDispatch {
-      message: Message::new(Body(String::from("some text")), Headers::empty()),
+      message: Message::new(
+        Route::new("rx", "x.y.z"),
+        Body(String::from("some text")),
+        Headers::empty(),
+      ),
       delay: Schedule::Now,
     })
   });
@@ -97,8 +99,8 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
           // message_printer should be a parameter of the function (*)
           let action =
             respond_hardcoded.react(InputMessage(std::str::from_utf8(&message.data).unwrap()));
-          interpret_action(&channel, action);
-          channel.basic_ack(message.delivery_tag, false)
+          interpret_action(channel.clone(), action)
+            .and_then(move |channel| channel.basic_ack(message.delivery_tag, false))
         })
       }).map_err(Error::from),
   )
@@ -106,11 +108,33 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
 
 type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = Error> + Send>;
 
-fn interpret_action(_channel: &channel::Channel<TcpStream>, action: Action) {
+fn interpret_action(
+  channel: channel::Channel<TcpStream>,
+  action: Action,
+) -> Box<Future<Item = channel::Channel<TcpStream>, Error = std::io::Error> + Send> {
   // interpret action is really a Action -> AmqpStuff function
   match action {
-    Action::DoNothing => debug!("Doing nothing"),
-    _ => debug!("Doing something"),
+    Action::DoNothing => {
+      debug!("Doing nothing");
+      Box::new(futures::future::ok(channel))
+    }
+    Action::SendMsg(MessageDispatch { message, delay: _ }) => {
+      info!("Publishing a message: {:?}", message);
+      Box::new(
+        channel
+          .basic_publish(
+            &*message.route.exchange,
+            &*message.route.routing_key,
+            message.body.0.into_bytes(),
+            channel::BasicPublishOptions::default(),
+            channel::BasicProperties::default().with_user_id("guest".to_string()),
+          ).map(|_| channel),
+      )
+    }
+    _ => {
+      debug!("Don't know what to do");
+      Box::new(futures::future::ok(channel))
+    }
   }
 }
 

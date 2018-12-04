@@ -3,14 +3,34 @@ use std::collections::HashMap;
 pub struct InputMessage<'a>(pub &'a str);
 
 #[derive(Debug, PartialEq)]
+pub struct Route {
+  pub exchange: String,
+  pub routing_key: String,
+}
+
+impl Route {
+  pub fn new(exchange: &str, routing_key: &str) -> Self {
+    Route {
+      exchange: String::from(exchange),
+      routing_key: String::from(routing_key),
+    }
+  }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Message {
+  pub route: Route,
   pub body: Body,
   pub headers: Headers,
 }
 
 impl Message {
-  pub fn new(body: Body, headers: Headers) -> Self {
-    Message { body, headers }
+  pub fn new(route: Route, body: Body, headers: Headers) -> Self {
+    Message {
+      route,
+      body,
+      headers,
+    }
   }
 }
 
@@ -20,21 +40,12 @@ pub trait ReactorImposter {
 
 pub mod imposters {
   use super::*;
-  pub struct LoggerReactor;
-  impl ReactorImposter for LoggerReactor {
-    fn react(&self, input: InputMessage) -> Action {
+
+  pub fn create_logger_reactor() -> impl ReactorImposter {
+    FnReactor::new(|input: InputMessage| {
       debug!("{}", input.0);
       Action::DoNothing
-    }
-  }
-  pub struct PingPongReactor;
-  impl ReactorImposter for PingPongReactor {
-    fn react(&self, input: InputMessage) -> Action {
-      Action::SendMsg(MessageDispatch {
-        message: Message::new(Body(String::from(input.0)), Headers::empty()),
-        delay: Schedule::Now,
-      })
-    }
+    })
   }
 
   pub struct FnReactor<F>
@@ -132,10 +143,14 @@ mod tests {
 
   #[test]
   fn should_run_the_first_of_the_chain() {
-    let reactor1 = imposters::LoggerReactor;
+    let reactor1 = imposters::create_logger_reactor();
     let reactor2 = imposters::FnReactor::new(move |_| {
       SendMsg(MessageDispatch {
-        message: Message::new(Body(String::from("nuclear bom")), Headers::empty()),
+        message: Message::new(
+          Route::new("ex", "rk"),
+          Body(String::from("nuclear bom")),
+          Headers::empty(),
+        ),
         delay: Schedule::Now,
       })
     });
