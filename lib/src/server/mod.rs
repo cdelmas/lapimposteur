@@ -18,7 +18,7 @@ use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::prelude::Future;
 
-fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
+fn bootstrap(connection_info: ConnectionInfo, bindings: &QueueBinding) {
   debug!("Starting the server...");
   trace!(
     "Connecting to RabbitMQ on {}:*****@{}:{}/{}",
@@ -27,8 +27,8 @@ fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
     connection_info.port,
     connection_info.vhost,
   );
-  let program =
-    create_client(connection_info).and_then(|client| create_imposter(&client, bindings));
+  let b = bindings.clone();
+  let program = create_client(connection_info).and_then(move |client| create_imposter(&client, &b));
 
   tokio::run(lazy(|| {
     debug!("Spawning tasks for each client");
@@ -36,7 +36,6 @@ fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
       program
         .map(|_| {
           debug!("Successfully connected");
-          ()
         })
         .map_err(|e| error!("Could not connect to RabbitMQ: {}", e)),
     );
@@ -47,7 +46,7 @@ fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
 // NOTE: the queue binding will eventually be wrapped into a reactor imposter config
 fn create_imposter(
   client: &client::Client<TcpStream>,
-  bindings: QueueBinding,
+  bindings: &QueueBinding,
 ) -> impl Future<Item = (), Error = Error> + Send + 'static {
   let queue_name = bindings.queue_name.0.clone();
   let exchange_name = bindings.exchange_name.0.clone();
@@ -130,7 +129,7 @@ fn interpret_action(
       debug!("Doing nothing");
       Either::A(futures::future::ok(()))
     }
-    Action::SendMsg(MessageDispatch { message, delay: _ }) => {
+    Action::SendMsg(MessageDispatch { message, .. }) => {
       info!("Publishing a message: {:?}", message);
       let mut rng = thread_rng(); // TODO: do not create it again and again (struct?)
       let message_id: String = iter::repeat(())
@@ -193,7 +192,7 @@ pub fn run() {
 
   // finally: call bootstrap with imposter descriptions
   let rabbitmq_host =
-    env::var("RABBITMQ_HOST").unwrap_or("amqp://guest:guest@localhost:5672/".to_owned()); // TODO: use a parameter instead
+    env::var("RABBITMQ_HOST").unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/".to_owned()); // TODO: use a parameter instead
   let queue_name = env::var("QUEUE").expect("please set QUEUE");
   let exchange_name = env::var("EXCHANGE").expect("please set EXCHANGE");
   let binding = env::var("BINDING").expect("please set BINDING");
@@ -205,5 +204,5 @@ pub fn run() {
   debug!("{:?}", queue_binding);
   let connection_info = ConnectionInfo::from_str(&rabbitmq_host)
     .expect("please set RABBITMQ_HOST correctly (amqp://user:password@host:port/vhost)");
-  bootstrap(connection_info, queue_binding);
+  bootstrap(connection_info, &queue_binding);
 }
