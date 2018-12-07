@@ -8,7 +8,7 @@ dependencies = [
 
 [[package]]
 name = "amq-protocol"
-version = "0.23.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "amq-protocol-codegen 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -369,7 +369,7 @@ version = "0.1.0"
 dependencies = [
  "failure 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "lapin-futures 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lapin-futures 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "maplit 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -379,11 +379,12 @@ dependencies = [
 
 [[package]]
 name = "lapin-async"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "amq-protocol 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "amq-protocol 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cookie-factory 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "sasl 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -391,14 +392,15 @@ dependencies = [
 
 [[package]]
 name = "lapin-futures"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "amq-protocol 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "amq-protocol 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "cookie-factory 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "lapin-async 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lapin-async 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1349,7 +1351,7 @@ dependencies = [
 
 [metadata]
 "checksum aho-corasick 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)" = "1e9a933f4e58658d7b12defcf96dc5c720f20832deebe3e0a19efd3b6aaeeb9e"
-"checksum amq-protocol 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f3505bb4a5d97ca7790c72195c1c20c7be054604fed32ae2330dc50c46e8da37"
+"checksum amq-protocol 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bc7ba7ff05833f200bc3d4120058d2982278cb99580b66188eefc6a85f9b0c52"
 "checksum amq-protocol-codegen 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "128c8690c42598933458337553d34334f83c266c6c423607dff5b134d46898d3"
 "checksum amq-protocol-types 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4793f877f96d4f1564664a3f13f8c4680365408a142498f998ac834ebfc40cb0"
 "checksum ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
@@ -1389,8 +1391,8 @@ dependencies = [
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
 "checksum itoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "1306f3464951f30e30d12373d31c79fbd52d236e5e896fd92f96ec7babbbe60b"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
-"checksum lapin-async 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a82b4e01caec7483f53d284dba75713923db6804c5eaab165f2c0c95096aaa5e"
-"checksum lapin-futures 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)" = "6d2dda72f161cc6067d41e135599d7a6515c37d5820e8086b89edcb489bbd1a5"
+"checksum lapin-async 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1a78f5e949ded314f74be719426213f3dd872e02b1dff9ca8a2d98745962d073"
+"checksum lapin-futures 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "83bc85315fb99af5a9cd0fdf13bf2530003046b0b83ee02249217064ad705a20"
 "checksum lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "76f033c7ad61445c5b347c7382dd1237847eb1bce590fe50365dcb33d546be73"
 "checksum lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a374c89b9db55895453a74c1e38861d9deec0b01b405a82516e9d5de4820dea1"
 "checksum lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b294d6fa9ee409a054354afc4352b0b9ef7ca222c69b8812cbea9e7d2bf3783f"
