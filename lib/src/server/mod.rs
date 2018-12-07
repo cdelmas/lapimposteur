@@ -18,7 +18,7 @@ use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::prelude::Future;
 
-fn bootstrap(connection_info: ConnectionInfo, bindings: &QueueBinding) {
+fn bootstrap(connection_info: &ConnectionInfo, bindings: &QueueBinding) {
   debug!("Starting the server...");
   trace!(
     "Connecting to RabbitMQ on {}:*****@{}:{}/{}",
@@ -158,12 +158,12 @@ fn interpret_action(
 }
 
 fn create_client(
-  connection_info: ConnectionInfo,
+  connection_info: &ConnectionInfo,
 ) -> impl Future<Item = client::Client<TcpStream>, Error = Error> + Send + 'static {
   let amqp_connection = client::ConnectionOptions {
-    username: connection_info.user,
-    password: connection_info.password,
-    vhost: connection_info.vhost,
+    username: connection_info.user.clone(),
+    password: connection_info.password.clone(),
+    vhost: connection_info.vhost.clone(),
     ..client::ConnectionOptions::default()
   };
   let addr = (&*connection_info.host, connection_info.port)
@@ -204,5 +204,5 @@ pub fn run() {
   debug!("{:?}", queue_binding);
   let connection_info = ConnectionInfo::from_str(&rabbitmq_host)
     .expect("please set RABBITMQ_HOST correctly (amqp://user:password@host:port/vhost)");
-  bootstrap(connection_info, &queue_binding);
+  bootstrap(&connection_info, &queue_binding);
 }
