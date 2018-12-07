@@ -1,5 +1,6 @@
 use failure::{err_msg, Error};
 use futures::future::lazy;
+use futures::future::Either;
 use futures::IntoFuture;
 use futures::Stream;
 use lapin::channel;
@@ -36,16 +37,18 @@ fn bootstrap(connection_info: ConnectionInfo, bindings: QueueBinding) {
         .map(|_| {
           debug!("Successfully connected");
           ()
-        }).map_err(|e| error!("Could not connect to RabbitMQ: {}", e)),
+        })
+        .map_err(|e| error!("Could not connect to RabbitMQ: {}", e)),
     );
     Ok(())
   }))
 }
 
-type ImposterFuture = Box<Future<Item = (), Error = Error> + Send>;
-
 // NOTE: the queue binding will eventually be wrapped into a reactor imposter config
-fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -> ImposterFuture {
+fn create_imposter(
+  client: &client::Client<TcpStream>,
+  bindings: QueueBinding,
+) -> impl Future<Item = (), Error = Error> + Send + 'static {
   let queue_name = bindings.queue_name.0.clone();
   let exchange_name = bindings.exchange_name.0.clone();
   let routing_key = bindings.routing_key.0.clone();
@@ -62,65 +65,70 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
     })
   });
 
-  Box::new(
-    client
-      .create_channel()
-      .and_then(move |channel| {
-        debug!("declaring queue {}", &queue_name);
-        channel
-          .queue_declare(
-            &*queue_name,
-            channel::QueueDeclareOptions::default(),
-            FieldTable::new(),
-          ).map(|queue| (channel, queue))
-      }).and_then(move |(channel, queue)| {
-        debug!(
-          "binding queue {} -{}-> {}",
-          queue.name(),
-          &routing_key,
-          &exchange_name
-        );
-        channel
-          .queue_bind(
-            &queue.name(),
-            &*exchange_name,
-            &*routing_key,
-            channel::QueueBindOptions::default(),
-            FieldTable::new(),
-          ).map(|_| (channel, queue))
-      }).and_then(move |(channel, queue)| {
-        debug!("creating a consumer for the imposter");
-        channel
-          .basic_consume(
-            &queue,
-            "",
-            channel::BasicConsumeOptions::default(),
-            FieldTable::new(),
-          ).map(|stream| (channel, stream))
-      }).and_then(move |(channel, stream)| {
-        stream.for_each(move |message| {
-          // message_printer should be a parameter of the function (*)
-          let action =
-            respond_hardcoded.react(InputMessage(std::str::from_utf8(&message.data).unwrap()));
-          interpret_action(channel.clone(), action)
-            .and_then(move |channel| channel.basic_ack(message.delivery_tag, false))
-        })
-      }).map_err(Error::from),
-  )
+  client
+    .create_channel()
+    .and_then(move |channel| {
+      debug!("declaring queue {}", &queue_name);
+      channel
+        .queue_declare(
+          &*queue_name,
+          channel::QueueDeclareOptions::default(),
+          FieldTable::new(),
+        )
+        .map(|queue| (channel, queue))
+    })
+    .and_then(move |(channel, queue)| {
+      debug!(
+        "binding queue {} -{}-> {}",
+        queue.name(),
+        &routing_key,
+        &exchange_name
+      );
+      channel
+        .queue_bind(
+          &queue.name(),
+          &*exchange_name,
+          &*routing_key,
+          channel::QueueBindOptions::default(),
+          FieldTable::new(),
+        )
+        .map(|_| (channel, queue))
+    })
+    .and_then(move |(channel, queue)| {
+      debug!("creating a consumer for the imposter");
+      channel
+        .basic_consume(
+          &queue,
+          "",
+          channel::BasicConsumeOptions::default(),
+          FieldTable::new(),
+        )
+        .map(|stream| (channel, stream))
+    })
+    .and_then(move |(channel, stream)| {
+      stream.for_each(move |message| {
+        // message_printer should be a parameter of the function (*)
+        let action =
+          respond_hardcoded.react(InputMessage(std::str::from_utf8(&message.data).unwrap()));
+        let c = channel.clone();
+        interpret_action(&channel, action)
+          .map(|_| c)
+          .and_then(move |channel| channel.basic_ack(message.delivery_tag, false))
+      })
+    })
+    .map_err(Error::from)
 }
-
-type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = Error> + Send>;
 
 // TODO: extract this to an ActionInterpreter structure
 fn interpret_action(
-  channel: channel::Channel<TcpStream>,
+  channel: &channel::Channel<TcpStream>,
   action: Action,
-) -> Box<Future<Item = channel::Channel<TcpStream>, Error = std::io::Error> + Send> {
+) -> impl Future<Item = (), Error = lapin::error::Error> + Send + 'static {
   // interpret action is really a Action -> AmqpStuff function
   match action {
     Action::DoNothing => {
       debug!("Doing nothing");
-      Box::new(futures::future::ok(channel))
+      Either::A(futures::future::ok(()))
     }
     Action::SendMsg(MessageDispatch { message, delay: _ }) => {
       info!("Publishing a message: {:?}", message);
@@ -129,7 +137,7 @@ fn interpret_action(
         .map(|()| rng.sample(Alphanumeric))
         .take(16)
         .collect(); // TODO: extract this to a function
-      Box::new(
+      Either::B(
         channel
           .basic_publish(
             &*message.route.exchange,
@@ -139,17 +147,20 @@ fn interpret_action(
             channel::BasicProperties::default()
               .with_message_id(message_id)
               .with_user_id("guest".to_string()),
-          ).map(|_| channel),
+          )
+          .map(|_| ()),
       )
     }
     _ => {
       debug!("Don't know what to do");
-      Box::new(futures::future::ok(channel))
+      Either::A(futures::future::ok(()))
     }
   }
 }
 
-fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
+fn create_client(
+  connection_info: ConnectionInfo,
+) -> impl Future<Item = client::Client<TcpStream>, Error = Error> + Send + 'static {
   let amqp_connection = client::ConnectionOptions {
     username: connection_info.user,
     password: connection_info.password,
@@ -162,17 +173,15 @@ fn create_client(connection_info: ConnectionInfo) -> ClientFuture {
     .next()
     .unwrap();
   trace!("Opening a TCP connection to {}", addr);
-  Box::new(
-    TcpStream::connect(&addr)
-      .map_err(Error::from)
-      .and_then(|stream| client::Client::connect(stream, amqp_connection).map_err(Error::from))
-      .and_then(|(client, heartbeat)| {
-        tokio::spawn(heartbeat.map_err(|e| warn!("heartbeat error: {:?}", e)))
-          .into_future()
-          .map(|_| client)
-          .map_err(|_| err_msg("Could not spawn the heartbeat"))
-      }).into_future(),
-  )
+  TcpStream::connect(&addr)
+    .map_err(Error::from)
+    .and_then(|stream| client::Client::connect(stream, amqp_connection).map_err(Error::from))
+    .and_then(|(client, heartbeat)| {
+      tokio::spawn(heartbeat.map_err(|e| warn!("heartbeat error: {:?}", e)))
+        .into_future()
+        .map(|_| client)
+        .map_err(|_| err_msg("Could not spawn the heartbeat"))
+    })
 }
 
 // run should take a structure representing the imposters, and pass it to bootstrap which will be in charge of interpreting it
