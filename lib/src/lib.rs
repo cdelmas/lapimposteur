@@ -6,6 +6,7 @@ extern crate log;
 extern crate tokio;
 #[macro_use]
 extern crate maplit;
+extern crate rand;
 
 pub mod model;
 pub mod server;

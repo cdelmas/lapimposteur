@@ -8,7 +8,10 @@ use lapin::types::FieldTable;
 use model::amqp::*;
 use model::imposter::imposters::*;
 use model::imposter::*;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::env;
+use std::iter;
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use tokio::net::TcpStream;
@@ -108,6 +111,7 @@ fn create_imposter(client: &client::Client<TcpStream>, bindings: QueueBinding) -
 
 type ClientFuture = Box<Future<Item = client::Client<TcpStream>, Error = Error> + Send>;
 
+// TODO: extract this to an ActionInterpreter structure
 fn interpret_action(
   channel: channel::Channel<TcpStream>,
   action: Action,
@@ -120,6 +124,11 @@ fn interpret_action(
     }
     Action::SendMsg(MessageDispatch { message, delay: _ }) => {
       info!("Publishing a message: {:?}", message);
+      let mut rng = thread_rng(); // TODO: do not create it again and again (struct?)
+      let message_id: String = iter::repeat(())
+        .map(|()| rng.sample(Alphanumeric))
+        .take(16)
+        .collect(); // TODO: extract this to a function
       Box::new(
         channel
           .basic_publish(
@@ -127,7 +136,9 @@ fn interpret_action(
             &*message.route.routing_key,
             message.body.0.into_bytes(),
             channel::BasicPublishOptions::default(),
-            channel::BasicProperties::default().with_user_id("guest".to_string()),
+            channel::BasicProperties::default()
+              .with_message_id(message_id)
+              .with_user_id("guest".to_string()),
           ).map(|_| channel),
       )
     }
