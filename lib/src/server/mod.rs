@@ -133,7 +133,7 @@ fn interpret_action(
       info!("Publishing a message: {:?}", message);
       let mut rng = thread_rng(); // TODO: do not create it again and again (struct?)
       let message_id: String = iter::repeat(())
-        .map(|()| rng.sample(Alphanumeric))
+        .map(|_| rng.sample(Alphanumeric))
         .take(16)
         .collect(); // TODO: extract this to a function
       Either::B(
