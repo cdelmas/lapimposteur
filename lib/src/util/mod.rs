@@ -39,9 +39,9 @@ mod tests {
 
   #[test]
   fn rustache() {
-    let data = HashBuilder::new().insert("$__ex[0]__data", "your name");
+    let data = HashBuilder::new().insert("hello", "your name");
     let mut out = Cursor::new(Vec::new());
-    data.render("{{ $__ex[0]__data }}", &mut out).unwrap();
+    data.render("{{ hello }}", &mut out).unwrap();
     assert_eq!("your name", String::from_utf8(out.into_inner()).unwrap());
   }
 
@@ -55,12 +55,11 @@ mod tests {
 
   // variables file
   // variable_name = value // any char follow by chars, digits or _, then spaces or not, then =, then spaces or not, then value
-  // value is either : a literal (digits -> int, or digits . digits -> double, "string", or object literal (json?) ) -> for a future evolution?
+  // value is either : a literal (parsed as a string)
   //       or : a json path
   //       or : a property reference
   //       or : an environment variable reference
   //       or : a generator
-
 
   named!(var_map<CompleteStr, HashMap<&str, Value> >,
     dbg_dmp!(map!(many0!(var_decl), |v:Vec<(&str,Value)>| v.into_iter().collect()))
@@ -158,10 +157,6 @@ mod tests {
 
   fn is_end_of_line(c: char) -> bool {
     c == '\n'
-  }
-
-  fn is_number(c: char) -> bool {
-    c.is_digit(10)
   }
 
   #[test]
