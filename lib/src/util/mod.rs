@@ -2,7 +2,7 @@
 mod tests {
 
   use jsonpath::Selector;
-  use model::imposter::{Body, Headers, Message, Route};
+  use model::imposters::{msg::*};
   use rustache::{HashBuilder, Render};
   use serde_json::Value;
   use std::io::Cursor;
