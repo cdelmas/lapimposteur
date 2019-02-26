@@ -4,7 +4,7 @@ mod tests {
   use jsonpath::Selector;
   use model::imposters::{msg::*};
   use rustache::{HashBuilder, Render};
-  use serde_json::Value;
+  use serde_json::Value as JsonValue;
   use std::io::Cursor;
 
   #[test]
@@ -29,7 +29,7 @@ mod tests {
       Headers::empty(),
     );
 
-    let json: Value = serde_json::from_str(&msg.body.0).unwrap();
+    let json: JsonValue = serde_json::from_str(&msg.body.0).unwrap();
     let selector = Selector::new("$.ex[0]").unwrap();
 
     let data: Vec<String> = selector.find(&json).map(|t| t.to_string()).collect();
@@ -62,30 +62,33 @@ mod tests {
   //       or : a generator
 
 
-  named!(var_map<CompleteStr, HashMap<&str, Variable> >,
-    dbg_dmp!(map!(many0!(var_decl), |v:Vec<(&str,Variable)>| v.into_iter().collect()))
+  named!(var_map<CompleteStr, HashMap<&str, Value> >,
+    dbg_dmp!(map!(many0!(var_decl), |v:Vec<(&str,Value)>| v.into_iter().collect()))
   );
 
   #[test]
   fn parse_var_file() {
-    let res = var_map("id = $.id\nhost = env[HOST]\ncorrId = prop[correlation_id]\nrandomStr = <str>\n".into());
+    let res = var_map("id = $.id\nhost = env[HOST]\ncorrId = prop[correlation_id]\nrandomStr = <str>\nnumi = 3\nnumr = 3.2\nstr = a string\n".into());
     assert_eq!(
       res, 
       Ok(("".into(), hashmap!( 
-        "id" => Variable::JsonPath{path: "$.id".to_owned()},
-        "host" => Variable::Env{name: "HOST".to_owned()},
-        "corrId" => Variable::Property{name: "correlation_id".to_owned()},
-        "randomStr" => Variable::Generator{g_type: GeneratorType::Str}
+        "id" => Value::Variable(Variable::JsonPath{path: "$.id".to_owned()}),
+        "host" => Value::Variable(Variable::Env{name: "HOST".to_owned()}),
+        "corrId" => Value::Variable(Variable::Property{name: "correlation_id".to_owned()}),
+        "randomStr" => Value::Variable(Variable::Generator{g_type: GeneratorType::Str}),
+        "numi" => Value::Literal("3".to_owned()),
+        "numr" => Value::Literal("3.2".to_owned()),
+        "str" => Value::Literal("a string".to_owned())
       )))
     );
   }
 
-  named!(var_decl    <CompleteStr,(&str,Variable)>,
+  named!(var_decl<CompleteStr,(&str,Value)>,
     do_parse!(
       opt!(space) >>
       k: var_name >>
       ws!(tag!("=")) >> 
-      v: alt!(json_path | prop | env | generator) >>
+      v: alt!(json_path | prop | env | generator | literal) >>
       opt!(space) >>
       eol >>
       (k.0,v)
@@ -93,11 +96,25 @@ mod tests {
   );
 
  #[test]
-  fn parse_var_decl() {
+  fn parse_json_path_var_decl() {
     let res = var_decl("id = $.id\n".into());
-    assert_eq!(res, Ok(("".into(), ("id", Variable::JsonPath{path: "$.id".to_owned()}))));
-  } 
+    assert_eq!(res, Ok(("".into(), ("id", Value::Variable(Variable::JsonPath{path: "$.id".to_owned()})))));
+  }
+
+  #[test]
+  fn parse_literal_var_decl() {
+    let res = var_decl("str = a string\n".into());
+    assert_eq!(res, Ok(("".into(), ("str", Value::Literal("a string".to_owned())))));
+  }
  
+  #[derive(PartialEq, Debug)]
+  enum Value {
+    Literal(Literal),
+    Variable(Variable),
+  }
+
+  type Literal = String;
+
   #[derive(PartialEq, Debug)]
   enum Variable {
     JsonPath { path: String, },
@@ -109,7 +126,43 @@ mod tests {
   }
 
   // Utils
+  named!(literal<CompleteStr, Value>, 
+    do_parse!(
+      s: take_till!(is_end_of_line) >>
+         (Value::Literal(String::from(s.0)))
+    )
+  );
+
+  #[test]
+  fn parse_string_literal() {
+    let res = literal("a string \"characters\" {=with weird thing%}".into());
+
+    assert_eq!(res, Ok(("".into(), Value::Literal("a string \"characters\" {=with weird thing%}".to_owned()))));
+  }
+
+  #[test]
+  fn parse_int_literal() {
+    let res = literal("45321".into());
+
+    assert_eq!(res, Ok(("".into(), Value::Literal("45321".to_owned()))));
+  }
+
+  #[test]
+  fn parse_real_literal() {
+    let res = literal("45321.432".into());
+
+    assert_eq!(res, Ok(("".into(), Value::Literal("45321.432".to_owned()))));
+  }
+
   named!(var_name<CompleteStr, CompleteStr>, take_while!(is_var_name_char));
+
+  fn is_end_of_line(c: char) -> bool {
+    c == '\n'
+  }
+
+  fn is_number(c: char) -> bool {
+    c.is_digit(10)
+  }
 
   #[test]
   fn parse_var_name(){
@@ -118,14 +171,12 @@ mod tests {
     assert_eq!(res, Ok(("  = ".into(), "id0".into())));
   }
 
-  named!(space_or_line_ending<CompleteStr,CompleteStr>, is_a!(" \r\n"));
-
   fn is_underscore(c: char) -> bool {
     c == '_'
   }
 
   fn is_end_of_value(c: char) -> bool {
-    c.is_whitespace() || c == '\n'
+    c.is_whitespace() || is_end_of_line(c)
   }
 
   fn is_var_name_char(c: char) -> bool {
@@ -142,50 +193,50 @@ mod tests {
 
   // JsonPath
 
-  named!(json_path<CompleteStr, Variable>, 
+  named!(json_path<CompleteStr, Value>, 
     do_parse!(
       d: char!('$')                  >> 
       r: take_till!(is_end_of_value) >>
-         (Variable::JsonPath { path: format!("{}{}", d, r) })
+         (Value::Variable(Variable::JsonPath { path: format!("{}{}", d, r) }))
     )
   );
 
   #[test]
   fn parse_json_path() {
     let res = json_path("$.persons[0].gender".into());
-    assert_eq!(res, Ok(("".into(), Variable::JsonPath { path: "$.persons[0].gender".to_owned() })));
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::JsonPath { path: "$.persons[0].gender".to_owned() }))));
   }
 
   // Env
 
-  named!(env<CompleteStr, Variable>, 
+  named!(env<CompleteStr, Value>, 
     do_parse!(
-         tag!("env")                 >>
-         e: delimited!(tag!("["), take_while!(is_env_name_char), tag!("]")) >>
-         (Variable::Env { name: String::from(e.0) })
+      tag!("env")                 >>
+      e: delimited!(tag!("["), take_while!(is_env_name_char), tag!("]")) >>
+      (Value::Variable(Variable::Env { name: String::from(e.0) }))
     )
   );
 
   #[test]
   fn parse_env() {
     let res = env("env[HOST]".into());
-    assert_eq!(res, Ok(("".into(), Variable::Env { name: "HOST".to_owned() })))
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Env { name: "HOST".to_owned() }))))
   }
 
   // Property
 
-  named!(prop<CompleteStr, Variable>, 
+  named!(prop<CompleteStr, Value>, 
     do_parse!(
-         tag!("prop")                 >>
-         p: delimited!(tag!("["), take_while!(is_prop_name_char), tag!("]")) >>
-         (Variable::Property { name: String::from(p.0) })
+      tag!("prop")                 >>
+      p: delimited!(tag!("["), take_while!(is_prop_name_char), tag!("]")) >>
+      (Value::Variable(Variable::Property { name: String::from(p.0) }))
     )
   );
 
   #[test]
   fn parse_prop() {
     let res = prop("prop[reply_to]".into());
-    assert_eq!(res, Ok(("".into(), Variable::Property { name: "reply_to".to_owned() })))
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Property { name: "reply_to".to_owned() }))));
   }
 
   // Generators
@@ -198,47 +249,47 @@ mod tests {
     Real,
   }
 
-  named!(generator<CompleteStr, Variable>,
+  named!(generator<CompleteStr, Value>,
     alt!(gen_uuid | gen_real | gen_str | gen_int)
   );
 
-  named!(gen_uuid<CompleteStr, Variable>, 
-    value!(Variable::Generator{g_type: GeneratorType::Uuid}, delimited!(char!('<'), tag!("uuid"), char!('>')))
+  named!(gen_uuid<CompleteStr, Value>, 
+    value!(Value::Variable(Variable::Generator{g_type: GeneratorType::Uuid}), delimited!(char!('<'), tag!("uuid"), char!('>')))
   );
 
-  named!(gen_real<CompleteStr, Variable>, 
-    value!(Variable::Generator{g_type: GeneratorType::Real}, delimited!(char!('<'), tag!("real"), char!('>')))
+  named!(gen_real<CompleteStr, Value>, 
+    value!(Value::Variable(Variable::Generator{g_type: GeneratorType::Real}), delimited!(char!('<'), tag!("real"), char!('>')))
   );
 
-  named!(gen_str<CompleteStr, Variable>, 
-    value!(Variable::Generator{g_type: GeneratorType::Str}, delimited!(char!('<'), tag!("str"), char!('>')))
+  named!(gen_str<CompleteStr, Value>, 
+    value!(Value::Variable(Variable::Generator{g_type: GeneratorType::Str}), delimited!(char!('<'), tag!("str"), char!('>')))
   );
 
-  named!(gen_int<CompleteStr, Variable>, 
-    value!(Variable::Generator{g_type: GeneratorType::Int}, delimited!(char!('<'), tag!("int"), char!('>')))
+  named!(gen_int<CompleteStr, Value>, 
+    value!(Value::Variable(Variable::Generator{g_type: GeneratorType::Int}), delimited!(char!('<'), tag!("int"), char!('>')))
   );
 
   #[test]
   fn parse_gen_uuid() {
     let res = gen_uuid("<uuid>".into());
-    assert_eq!(res, Ok(("".into(), Variable::Generator{g_type: GeneratorType::Uuid})));
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Generator{g_type: GeneratorType::Uuid}))));
   }
 
   #[test]
   fn parse_gen_int() {
     let res = gen_int("<int>".into());
-    assert_eq!(res, Ok(("".into(), Variable::Generator{g_type: GeneratorType::Int})));
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Generator{g_type: GeneratorType::Int}))));
   }
 
   #[test]
   fn parse_gen_str() {
     let res = gen_str("<str>".into());
-    assert_eq!(res, Ok(("".into(), Variable::Generator{g_type: GeneratorType::Str})));
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Generator{g_type: GeneratorType::Str}))));
   }
 
   #[test]
   fn parse_gen_real() {
     let res = gen_real("<real>".into());
-    assert_eq!(res, Ok(("".into(), Variable::Generator{g_type: GeneratorType::Real})));
+    assert_eq!(res, Ok(("".into(), Value::Variable(Variable::Generator{g_type: GeneratorType::Real}))));
   }
 }
