@@ -1,2 +1,1 @@
-pub mod amqp;
-pub mod imposters;
+pub mod imposter;

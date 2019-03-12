@@ -1,0 +1,57 @@
+{
+  "connection": "amqp://localhost:5672/",
+  "reactors": [
+    {
+      "queue": "q-1",
+      "exchange": "ex-1",
+      "routingKey": "r.k.1",
+      "action": [
+        {
+          "to": {
+            "exchange": "can be empty for direct reply to",
+            "routing_key": "can be empty, so the reactor uses the reply_to property"
+          },
+          "headers": {
+            "custom_id": { "type": "Literal", "value": 3 },
+            "content_type": { "type": "Literal", "value": "application/json" },
+            "id": { "value": { "type": "Variable", "value": "{{ uuid }}" } }
+          },
+          "variables": {
+            "n1": {
+              "type": "IntJsonPath",
+              "value": "$ex.toto.int"
+            },
+            "n1s": {
+              "type": "StrJsonPath",
+              "value": "$ex.toto.str"
+            },
+            "uuid": { "type": "UuidGen" },
+            "int": { "type": "IntGen" },
+            "string": { "type": "StrGen" },
+            "real": { "type": "RealGen" },
+            "host": { "type": "Env", "value": "HOST" },
+            "corrId": { "type": "StrHeader", "value": "correlation_id" },
+            "priority": { "type": "IntHeader", "value": "priority" }
+          },
+          "payload": "{ \"some\": \"stringified json\", \"id\": \"{{ uuid }}\", \"propInt\": {{ n1 }} }",
+          "schedule": { "seconds": 0 }
+        }
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "cron": "* * * * 2",
+      "action": {
+        "to": {
+          "exchange": "out",
+          "rk": "r.k"
+        },
+        "headers": {},
+        "variables": { "id": { "type": "UuidGen" } },
+        "payload": "event-2 |id|",
+        "schedule": { "seconds": 2 }
+      }
+    }
+  ]
+}

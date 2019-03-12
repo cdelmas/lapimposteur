@@ -5,5 +5,6 @@ use lapimposteur::server;
 
 fn main() {
     env_logger::init();
-    server::run();
+    // TODO: command line to get the config file
+    server::run(); // pass the config file to the server
 }

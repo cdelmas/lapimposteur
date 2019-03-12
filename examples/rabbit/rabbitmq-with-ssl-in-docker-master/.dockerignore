@@ -1,0 +1,6 @@
+.git
+.project
+.gitignore
+.travis.yml
+.README.md
+tests/
