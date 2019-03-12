@@ -13,7 +13,7 @@ extern crate maplit;
 #[macro_use]
 extern crate nom;
 extern crate rand;
-extern crate rustache;
+extern crate mustache;
 extern crate serde;
 extern crate serde_json;
 extern crate uuid;

@@ -1,7 +1,6 @@
 use cron::Schedule;
 use failure::{err_msg, Error};
 use futures::future::lazy;
-use futures::sync::mpsc;
 use futures::IntoFuture;
 use futures::Sink;
 use futures::Stream;
@@ -10,19 +9,34 @@ use lapin_futures_rustls::{
   AMQPStream,
 };
 use model::imposter::{Lit::*, *};
+use rand::thread_rng;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::prelude::Future;
 use tokio::timer::Delay;
 
 fn bootstrap(imposter: Imposter) {
   tokio::run(lazy(|| {
-    let program = create_client(&imposter.connection).and_then(move |client| {
-      futures::stream::iter_ok(imposter.reactors)
-        .for_each(move |reactor| tokio::spawn(create_reactor(&client, reactor)))
-        .into_future()
-        .map_err(|_| err_msg("Couldn't spawn the consumer task"))
-        .map(move |_| ())
-    });
+    let connection_str = imposter.connection.clone();
+    let program = create_client(&connection_str)
+      .and_then(move |client| {
+        create_client(&connection_str).map(|publish_client| (client, publish_client))
+      })
+      .and_then(move |(client, publish_client)| {
+        futures::stream::iter_ok(imposter.reactors)
+          .for_each(move |reactor| {
+            tokio::spawn(
+              create_reactor(&client, &publish_client, reactor)
+                .map_err(|e| error!("Reactor error: {}", e)),
+            )
+          })
+          .into_future()
+          .map_err(|_| err_msg("Couldn't spawn the consumer task"))
+          .map(move |_| {
+            warn!("End of reactor stream");
+            ()
+          })
+      });
 
     tokio::spawn(
       program
@@ -37,14 +51,25 @@ fn bootstrap(imposter: Imposter) {
 
 fn create_reactor(
   client: &lapin::client::Client<AMQPStream>,
+  publish_client: &lapin::client::Client<AMQPStream>,
   reactor: ReactorSpec,
-) -> impl Future<Item = (), Error = ()> {
+) -> impl Future<Item = (), Error = Error> {
   let rk = reactor.routing_key.clone();
   let xchg = reactor.exchange.clone();
   let q = reactor.queue.clone();
+  let action = reactor.action.clone();
+  let client = client.clone();
+  let publish_client = publish_client.clone();
   client
     .create_channel()
+    .map_err(Error::from)
     .and_then(move |channel| {
+      publish_client
+        .create_channel()
+        .map(|publisher_channel| (publisher_channel, channel))
+        .map_err(Error::from)
+    })
+    .and_then(move |(publisher_channel, channel)| {
       debug!("Declaring queue {}", &q);
       channel
         .queue_declare(
@@ -55,9 +80,10 @@ fn create_reactor(
           },
           FieldTable::new(),
         )
-        .map(move |queue| (channel, queue))
+        .map(move |queue| (publisher_channel, channel, queue))
+        .map_err(Error::from)
     })
-    .and_then(move |(channel, queue)| {
+    .and_then(move |(publisher_channel, channel, queue)| {
       debug!("Binding {}======{}=====>{}", &queue.name(), &rk, &xchg);
       channel
         .queue_bind(
@@ -67,9 +93,10 @@ fn create_reactor(
           QueueBindOptions::default(),
           FieldTable::new(),
         )
-        .map(move |_| (channel, queue))
+        .map(move |_| (publisher_channel, channel, queue))
+        .map_err(Error::from)
     })
-    .and_then(move |(channel, queue)| {
+    .and_then(move |(publisher_channel, channel, queue)| {
       debug!("Consuming on {}", &queue.name());
       channel
         .basic_consume(
@@ -78,44 +105,65 @@ fn create_reactor(
           BasicConsumeOptions::default(),
           FieldTable::new(),
         )
-        .map(move |stream| (channel, stream))
+        .map(move |stream| (publisher_channel, channel, stream))
+        .map_err(Error::from)
     })
-    .and_then(move |(channel, stream)| {
+    .and_then(move |(publisher_channel, channel, stream)| {
       debug!("Stream of message is open, let's consume!");
-      stream.for_each(move |delivery| {
-        debug!("Received message {}", delivery.delivery_tag);
-        let (tx, rx) = mpsc::channel::<Message>(reactor.action.len());
-        let actions = reactor.action.clone();
-        for action in actions {
-          let transmitter = tx.clone();
-          let d = delivery.clone();
-          tokio::spawn(
-            delay(action.schedule.seconds as u64, &transmitter, move || {
-              debug!("Handling the message...");
-              handle_message(&action, &Message::from(d.clone()))
-            })
-            .map_err(|e| error!("Error handling the message: {}", e)),
-          );
-        }
-        let publish_channel = channel.clone();
-        tokio::spawn(rx.for_each(move |m| {
-          debug!("Publishing a message");
-          publish_channel
-            .basic_publish(
-              &m.route.exchange,
-              &m.route.routing_key,
-              m.payload,
-              BasicPublishOptions::default(),
-              to_amqp_props(&m.headers),
-            )
-            .map_err(|e| error!("Error publishing a message: {}", e))
-            .map(|_| ())
-        }));
-        channel.basic_ack(delivery.delivery_tag, false)
+      let publisher = Arc::new(Mutex::new(publisher_channel));
+      stream.map_err(Error::from).for_each(move |delivery| {
+        let delivery_tag = delivery.delivery_tag;
+        debug!("Received message {}", delivery_tag);
+        let publisher = publisher.clone();
+        let actions = action.clone();
+        let input_message = Message::from(delivery);
+        let (tx, rx) = futures::sync::mpsc::channel(0);
+        tokio::spawn(
+          futures::stream::iter_ok(actions)
+            .map(move |action| (action, input_message.clone()))
+            .for_each(move |(action, input_message)| {
+              let tx = tx.clone();
+              Delay::new(Instant::now() + Duration::from_secs(action.schedule.seconds as u64))
+                .then(move |_| {
+                  let action = action.clone();
+                  let input_message = input_message.clone();
+                  let mut rng = thread_rng();
+                  let evaluator = Random::new(&mut rng);
+                  debug!("Generating a message...");
+                  handle_message(&action, &input_message, &evaluator)
+                })
+                .and_then(move |msg| {
+                  debug!("We have a message: send it through channel");
+                  tx.send(msg).map(|_| ()).map_err(Error::from)
+                })
+                .map_err(|e| error!("Error: {}", e))
+            }),
+        );
+        let publisher = publisher.clone();
+        let channel = channel.clone();
+        tokio::spawn(
+          rx.map_err(|_| error!("Error on rx stream"))
+            .for_each(move |msg| {
+              debug!("Received a message to send from the channel");
+              let publisher = publisher.lock().unwrap();
+              publisher
+                .basic_publish(
+                  &msg.route.exchange,
+                  &msg.route.routing_key,
+                  msg.payload,
+                  BasicPublishOptions::default(),
+                  to_amqp_props(&msg.headers),
+                )
+                .map(|_| {
+                  info!("Message published!!");
+                  ()
+                })
+                .map_err(|e| error!("Publishing a message: {}", e))
+            }),
+        );
+        channel.basic_ack(delivery_tag, false).map_err(Error::from)
       })
     })
-    .map_err(move |err| error!("got error {}", err))
-    .map(|_| ())
 }
 
 impl From<Delivery> for Message {
@@ -330,27 +378,19 @@ fn create_client(
     .map(|(client, _)| client)
 }
 
-// after a delay of seconds s, produce a value of type T using value_fn, then send it using tx
 fn delay<T>(
   seconds: u64,
-  tx: &futures::sync::mpsc::Sender<T>,
-  value_fn: impl Fn() -> Result<T, Error>,
-) -> impl Future<Item = (), Error = Error>
+  value_fn: impl FnOnce() -> Result<T, Error>,
+) -> impl Future<Item = T, Error = Error>
 where
   T: Send + Sync + 'static,
 {
-  let sender = tx.clone();
   Delay::new(Instant::now() + Duration::from_secs(seconds))
     .then(move |_| {
-      debug!("Elapsed! Sending a cross-task message over the channel");
-      let value = value_fn();
-      match value {
-        Ok(msg) => Ok(sender.send(msg)),
-        Err(e) => Err(e),
-      }
+      debug!("Elapsed! Generating the message");
+      value_fn()
     })
     .map_err(Error::from)
-    .map(|_| ())
 }
 
 // run should pass the imposter structure to bootstrap which will be in charge of interpreting it

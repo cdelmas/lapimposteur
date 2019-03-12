@@ -1,9 +1,9 @@
 use chrono::*;
 use failure::Error;
 use jsonpath::Selector;
+use mustache::{compile_str, Data, MapBuilder};
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng, ThreadRng};
-use rustache::{HashBuilder, Render};
+use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde_json::{from_value, Value as JsonValue};
 use std::cell::RefCell;
@@ -97,20 +97,24 @@ pub enum Var {
   Timestamp,
 }
 
-struct Random<'a, T: Rng> {
-  rng: RefCell<&'a mut T>, // TODO: Arc?
+pub struct Random<'a, R: Rng> {
+  rng: RefCell<&'a mut R>,
 }
 
-impl<'a, T: Rng> Random<'a, T> {
-  fn new(rng: &'a mut T) -> Self {
+impl<'a, R: Rng> Random<'a, R> {
+  pub fn new(rng: &'a mut R) -> Self {
     Random {
       rng: RefCell::new(rng),
     }
   }
 }
 
-impl<'a, T: Rng> Random<'a, T> {
-  pub fn eval_int(&self, variable: &Var, input_message: &Message) -> Result<i64, Error> {
+pub trait Eval<T> {
+  fn eval(&self, variable: &Var, input_message: &Message) -> Result<T, Error>;
+}
+
+impl<'a, R: Rng> Eval<i64> for Random<'a, R> {
+  fn eval(&self, variable: &Var, input_message: &Message) -> Result<i64, Error> {
     match &variable {
       Var::Env(e) => var(e)
         .map_err(Error::from)
@@ -121,28 +125,39 @@ impl<'a, T: Rng> Random<'a, T> {
         .get(h)
         .ok_or(format_err!("Cannot get header {}", h))
         .and_then(|l| match l {
-          Lit::Int(i) => Ok(*i), // TODO eval variables
+          Lit::Int(i) => Ok(*i),
           _ => Err(format_err!("Cannot get header {} of type Int", h)),
         }),
-      Var::IntJsonPath(p) => Ok(42), // TODO: get from message body
+      Var::IntJsonPath(p) => get_value_from_body(input_message, p),
       Var::Timestamp => Ok(current_time()),
       _ => Err(format_err!("Cannot get an int from {:?}", variable)),
     }
   }
+}
 
-  pub fn eval_str(&self, variable: &Var, input_message: &Message) -> Result<String, Error> {
+impl<'a, R: Rng> Eval<String> for Random<'a, R> {
+  fn eval(&self, variable: &Var, input_message: &Message) -> Result<String, Error> {
     match &variable {
       Var::Env(e) => var(e).map_err(Error::from),
       Var::StrGen(sz) => Ok(self.gen_str(*sz as usize)),
-      Var::StrHeader(h) => Ok("to_do".to_owned()), // get from headers
-      Var::StrJsonPath(p) => Ok("to_do".to_owned()), // get from body
+      Var::StrHeader(h) => input_message
+        .headers
+        .get(h)
+        .ok_or(format_err!("Cannot get header {}", h))
+        .and_then(|l| match l {
+          Lit::Str(s) => Ok(s.clone()),
+          _ => Err(format_err!("Cannot get header {} of type Str", h)),
+        }), // get from headers
+      Var::StrJsonPath(p) => get_value_from_body(input_message, p),
       Var::DateTime => Ok(now().to_string()),
       Var::UuidGen => Ok(Uuid::new_v4().to_hyphenated().to_string()),
       _ => Err(format_err!("Cannot get a string from {:?}", variable)),
     }
   }
+}
 
-  pub fn eval_real(&self, variable: &Var, input_message: &Message) -> Result<f64, Error> {
+impl<'a, R: Rng> Eval<f64> for Random<'a, R> {
+  fn eval(&self, variable: &Var, _input_message: &Message) -> Result<f64, Error> {
     match &variable {
       Var::Env(e) => var(e)
         .map_err(Error::from)
@@ -151,7 +166,9 @@ impl<'a, T: Rng> Random<'a, T> {
       _ => Err(format_err!("Cannot get a real from {:?}", variable)),
     }
   }
+}
 
+impl<'a, R: Rng> Random<'a, R> {
   fn gen_str(&self, sz: usize) -> String {
     iter::repeat(())
       .map(|_| self.rng.borrow_mut().sample(Alphanumeric))
@@ -191,47 +208,44 @@ pub fn create_stub_imposter() -> Imposter {
   );
   Imposter {
     connection: "amqp://bob:bob@localhost:5672/test?heartbeat=20".to_owned(),
-    reactors: vec![ReactorSpec {
-      queue: "bob-q".to_owned(),
-      exchange: "bob-x".to_owned(),
-      routing_key: "r.k.1".to_owned(),
-      action: vec![ActionSpec {
-        to: RouteSpec {
-          exchange: None,
-          routing_key: None,
-        },
-        headers,
-        variables,
-        payload: "mon id est: {{ uuid }}".to_owned(),
-        schedule: ScheduleSpec { seconds: 3 },
-      }],
-    }],
+    reactors: vec![
+      ReactorSpec {
+        queue: "bob-q-1".to_owned(),
+        exchange: "bob-x".to_owned(),
+        routing_key: "r.k.1".to_owned(),
+        action: vec![ActionSpec {
+          to: RouteSpec {
+            exchange: Some("bob-x".to_owned()),
+            routing_key: None,
+          },
+          headers,
+          variables,
+          payload: "mon id est: {{ uuid }}".to_owned(),
+          schedule: ScheduleSpec { seconds: 3 },
+        }],
+      },
+      ReactorSpec {
+        queue: "bob-q-2".to_owned(),
+        exchange: "bob-x".to_owned(),
+        routing_key: "r.k.1".to_owned(),
+        action: vec![ActionSpec {
+          to: RouteSpec {
+            exchange: Some("bob-x".to_owned()),
+            routing_key: None,
+          },
+          headers: HeadersSpec::new(),
+          variables: Variables::new(),
+          payload: "Message en dur".to_owned(),
+          schedule: ScheduleSpec { seconds: 0 },
+        }],
+      },
+    ],
     generators: vec![GeneratorSpec {
       cron: "".to_owned(),
       action: vec![],
     }],
   }
 }
-/*
-fn use_it() {
-  let v = Var::IntGen;
-  let msg = Message {
-    payload: vec![],
-    headers: HashMap::new(),
-    route: Route {
-      exchange: "".to_owned(),
-      routing_key: "".to_owned(),
-    },
-  };
-  let mut rng = thread_rng();
-  let r = Random {
-    rng: RefCell::new(&mut rng),
-  };
-  let n = eval::<u64, Eval<u64>>(&r, &msg, &v);
-  let num = n.unwrap_or_default();
-
-  println!("{}", num);
-}*/
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RouteSpec {
@@ -248,7 +262,6 @@ pub struct Route {
 pub type CronExpr = String;
 
 pub struct GeneratorSpec {
-  // TODO: do not include for now
   pub cron: CronExpr,
   pub action: Vec<ActionSpec>,
 }
@@ -278,10 +291,38 @@ pub struct Message {
   pub route: Route,
 }
 
-pub fn handle_message(action: &ActionSpec, input_message: &Message) -> Result<Message, Error> {
-  let payload = action.payload.fill(&input_message, &action.variables)?;
-  let headers = action.headers.fill(&input_message, &action.variables)?;
-  let route = action.to.fill(&input_message, &action.variables)?;
+impl Message {
+  fn get_reply_to(&self) -> Option<String> {
+    self
+      .headers
+      .get(&"reply_to".to_owned())
+      .and_then(|v| match v {
+        Lit::Str(x) => Some(x.clone()),
+        _ => None, // should never happen
+      })
+  }
+}
+
+pub fn handle_message<E>(
+  action: &ActionSpec,
+  input_message: &Message,
+  evaluator: &E,
+) -> Result<Message, Error>
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
+  trace!("Filling the payload template...");
+  let payload = action
+    .payload
+    .fill(&input_message, &action.variables, evaluator)?;
+  trace!("Filling the headers template...");
+  let headers = action
+    .headers
+    .fill(&input_message, &action.variables, evaluator)?;
+  trace!("Filling the route template...");
+  let route = action
+    .to
+    .fill(&input_message, &action.variables, evaluator)?;
   Ok(Message {
     headers,
     payload: payload.into_bytes(),
@@ -289,40 +330,41 @@ pub fn handle_message(action: &ActionSpec, input_message: &Message) -> Result<Me
   })
 }
 
-trait Template<R> {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<R, Error>;
+trait Template<T, E> {
+  fn fill(&self, input_message: &Message, vars: &Variables, evaluator: &E) -> Result<T, Error>
+  where
+    E: Eval<i64> + Eval<String> + Eval<f64>;
 }
 
-// TODO: impl Message
-fn get_reply_to(msg: &Message) -> Option<String> {
-  msg
-    .headers
-    .get(&"reply_to".to_owned())
-    .and_then(|v| match v {
-      Lit::Str(x) => Some(x.clone()),
-      _ => None, // should never happen
-    })
-}
-
-// TODO: define what are the best errors
-impl Template<Route> for RouteSpec {
-  fn fill(&self, input_message: &Message, _vars: &Variables) -> Result<Route, Error> {
+impl<E> Template<Route, E> for RouteSpec {
+  fn fill(&self, input_message: &Message, _vars: &Variables, _evaluator: &E) -> Result<Route, Error>
+  where
+    E: Eval<i64> + Eval<String> + Eval<f64>,
+  {
     match (&self.exchange, &self.routing_key) {
       (None, _) => Ok(Route {
         exchange: "".to_owned(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
+        routing_key: input_message
+          .get_reply_to()
+          .unwrap_or("invalid.key".to_owned()),
       }),
       (Some(ref e), _) if e.is_empty() => Ok(Route {
         exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
+        routing_key: input_message
+          .get_reply_to()
+          .unwrap_or("invalid.key".to_owned()),
       }),
       (Some(ref e), None) => Ok(Route {
         exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
+        routing_key: input_message
+          .get_reply_to()
+          .unwrap_or("invalid.key".to_owned()),
       }),
       (Some(ref e), Some(ref r)) if r.is_empty() => Ok(Route {
         exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
+        routing_key: input_message
+          .get_reply_to()
+          .unwrap_or("invalid.key".to_owned()),
       }),
       (Some(ref e), Some(ref r)) => Ok(Route {
         exchange: e.clone(),
@@ -332,43 +374,32 @@ impl Template<Route> for RouteSpec {
   }
 }
 
-fn eval_var_ref(
+fn eval_var_ref<E>(
   var_ref: &VarRef,
   input_message: &Message,
   vars: &Variables,
-) -> Result<HValue, Error> {
+  evaluator: &E,
+) -> Result<HValue, Error>
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
   match var_ref {
     VarRef::Str(r) => match vars.get(r) {
-      // TODO call model's functions
       Some(Variable::Lit(Lit::Str(s))) => Ok(Lit::Str(s.clone())),
       Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(Var::StrGen(sz))) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(Var::StrHeader(h))) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(Var::StrJsonPath(p))) => {
-        get_value_from_body::<String>(input_message, p).map(Lit::Str)
-      }
-      Some(Variable::Var(Var::DateTime)) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
+      Some(Variable::Var(v)) => evaluator.eval(v, input_message).map(Lit::Str),
       None => Err(format_err!("Variable not found {}", &r)),
     },
     VarRef::Int(ref r) => match vars.get(r) {
       Some(Variable::Lit(Lit::Int(i))) => Ok(Lit::Int(*i)),
       Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(Var::Env(e))) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntGen)) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntHeader(h))) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntJsonPath(p))) => {
-        get_value_from_body::<i64>(input_message, p).map(Lit::Int)
-      }
-      Some(Variable::Var(Var::Timestamp)) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
+      Some(Variable::Var(v)) => evaluator.eval(v, input_message).map(Lit::Int),
       None => Err(format_err!("Variable not found {}", &r)),
     },
     VarRef::Real(ref r) => match vars.get(r) {
       Some(Variable::Lit(Lit::Real(f))) => Ok(Lit::Real(*f)),
       Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(Var::RealGen)) => Ok(Lit::Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
+      Some(Variable::Var(v)) => evaluator.eval(v, input_message).map(Lit::Real),
       None => Err(format_err!("Variable not found {}", &r)),
     },
   }
@@ -389,34 +420,131 @@ where
   }
 }
 
-fn eval_spec(
+fn eval_spec<E>(
   spec: &HeaderValueSpec,
   input_message: &Message,
   vars: &Variables,
-) -> Result<HValue, Error> {
+  evaluator: &E,
+) -> Result<HValue, Error>
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
   match spec {
     HeaderValueSpec::Lit(l) => Ok(l.clone()),
-    HeaderValueSpec::VarRef(var_ref) => eval_var_ref(var_ref, input_message, vars),
+    HeaderValueSpec::VarRef(var_ref) => eval_var_ref(var_ref, input_message, vars, evaluator),
   }
 }
 
-impl Template<Headers> for HeadersSpec {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<Headers, Error> {
+impl<E> Template<Headers, E> for HeadersSpec
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
+  fn fill(
+    &self,
+    input_message: &Message,
+    vars: &Variables,
+    evaluator: &E,
+  ) -> Result<Headers, Error> {
     self
       .iter()
       .fold(Ok(Headers::new()), |acc: Result<Headers, Error>, (k, v)| {
         let h = &mut acc?;
-        let value = eval_spec(v, input_message, vars)?;
+        let value = eval_spec(v, input_message, vars, evaluator)?;
         h.insert(k.clone(), value);
         Ok(h.clone())
       })
   }
 }
 
-impl Template<String> for PayloadTemplate {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<String, Error> {
-    Ok(String::from("")) // TODO: implement
+impl<E> Template<String, E> for PayloadTemplate
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
+  fn fill(
+    &self,
+    input_message: &Message,
+    vars: &Variables,
+    evaluator: &E,
+  ) -> Result<String, Error> {
+    let data = to_hash_map(vars, input_message, evaluator)?;
+    let template = compile_str(self)?;
+    let mut out = Cursor::new(Vec::new());
+    template.render_data(&mut out, &data)?;
+    String::from_utf8(out.into_inner()).map_err(Error::from)
   }
+}
+
+impl From<Lit> for String {
+  fn from(lit: Lit) -> String {
+    match lit {
+      Lit::Str(s) => s.clone(),
+      Lit::Int(i) => i.to_string(),
+      Lit::Real(r) => r.to_string(),
+    }
+  }
+}
+
+fn to_hash_map<E>(vars: &Variables, input_message: &Message, evaluator: &E) -> Result<Data, Error>
+where
+  E: Eval<i64> + Eval<String> + Eval<f64>,
+{
+  vars
+    .iter()
+    .fold(Ok(MapBuilder::new()), |acc, (k, v)| {
+      let map = acc?;
+      match v {
+        Variable::Lit(x) => map
+          .insert(k.clone(), &String::from(x.clone()))
+          .map_err(Error::from),
+        Variable::Var(v) => match v {
+          x @ Var::StrHeader(_) => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::StrJsonPath(_) => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::StrGen(_) => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::Env(_) => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::UuidGen => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::DateTime => {
+            let s_val: String = evaluator.eval(x, input_message)?;
+            Ok(map.insert_str(k.clone(), s_val.clone()))
+          }
+          x @ Var::IntGen => {
+            let i_val: i64 = evaluator.eval(x, input_message)?;
+            map.insert(k.clone(), &i_val).map_err(Error::from)
+          }
+          x @ Var::IntHeader(_) => {
+            let i_val: i64 = evaluator.eval(x, input_message)?;
+            map.insert(k.clone(), &i_val).map_err(Error::from)
+          }
+          x @ Var::IntJsonPath(_) => {
+            let i_val: i64 = evaluator.eval(x, input_message)?;
+            map.insert(k.clone(), &i_val).map_err(Error::from)
+          }
+          x @ Var::Timestamp => {
+            let i_val: i64 = evaluator.eval(x, input_message)?;
+            map.insert(k.clone(), &i_val).map_err(Error::from)
+          }
+          x @ Var::RealGen => {
+            let r_val: f64 = evaluator.eval(x, input_message)?;
+            map.insert(k.clone(), &r_val).map_err(Error::from)
+          }
+        },
+      }
+    })
+    .map(MapBuilder::build)
 }
 
 // **************************
