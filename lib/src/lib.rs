@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate cron;
 #[macro_use]
 extern crate failure;
@@ -13,6 +14,7 @@ extern crate maplit;
 extern crate nom;
 extern crate rand;
 extern crate rustache;
+extern crate serde;
 extern crate serde_json;
 extern crate uuid;
 

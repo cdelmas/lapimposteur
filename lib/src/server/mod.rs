@@ -10,10 +10,6 @@ use lapin_futures_rustls::{
   AMQPStream,
 };
 use model::imposter::{Lit::*, *};
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
-use std::iter;
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tokio::prelude::Future;
 use tokio::timer::Delay;
@@ -122,125 +118,16 @@ fn create_reactor(
     .map(|_| ())
 }
 
-fn handle_message(action: &ActionSpec, input_message: &Message) -> Result<Message, Error> {
-  let payload = action.payload.fill(&input_message, &action.variables)?;
-  let headers = action.headers.fill(&input_message, &action.variables)?;
-  let route = action.to.fill(&input_message, &action.variables)?;
-  Ok(Message {
-    headers,
-    payload: payload.into_bytes(),
-    route,
-  })
-}
-
-trait Template<R> {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<R, Error>;
-}
-
-fn get_reply_to(msg: &Message) -> Option<String> {
-  msg
-    .headers
-    .get(&"reply_to".to_owned())
-    .and_then(|v| match v {
-      Str(x) => Some(x.clone()),
-      _ => None, // should never happen
-    })
-}
-
-// TODO: define what are the best errors
-impl Template<Route> for RouteSpec {
-  fn fill(&self, input_message: &Message, _vars: &Variables) -> Result<Route, Error> {
-    match (&self.exchange, &self.routing_key) {
-      (None, _) => Ok(Route {
-        exchange: "".to_owned(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
-      }),
-      (Some(ref e), _) if e.is_empty() => Ok(Route {
-        exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
-      }),
-      (Some(ref e), None) => Ok(Route {
-        exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
-      }),
-      (Some(ref e), Some(ref r)) if r.is_empty() => Ok(Route {
-        exchange: e.clone(),
-        routing_key: get_reply_to(&input_message).unwrap_or("invalid.key".to_owned()),
-      }),
-      (Some(ref e), Some(ref r)) => Ok(Route {
-        exchange: e.clone(),
-        routing_key: r.clone(),
-      }),
+impl From<Delivery> for Message {
+  fn from(delivery: Delivery) -> Message {
+    Message {
+      payload: delivery.data,
+      route: Route {
+        exchange: delivery.exchange,
+        routing_key: delivery.routing_key,
+      },
+      headers: to_headers_map(&delivery.properties),
     }
-  }
-}
-
-fn eval_var_ref(
-  var_ref: &VarRef,
-  input_message: &Message,
-  vars: &Variables,
-) -> Result<HValue, Error> {
-  match var_ref {
-    VarRef::Str(r) => match vars.get(r) {
-      // TODO call model's functions
-      Some(Variable::Lit(Str(s))) => Ok(Str(s.clone())),
-      Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(v)) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::StrGen(sz))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::StrHeader(h))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::StrJsonPath(p))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::DateTime)) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      None => Err(format_err!("Variable not found {}", &r)),
-    },
-    VarRef::Int(ref r) => match vars.get(r) {
-      Some(Variable::Lit(Int(i))) => Ok(Int(*i)),
-      Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(Var::Env(e))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntGen)) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntHeader(h))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::IntJsonPath(p))) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(Var::Timestamp)) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      None => Err(format_err!("Variable not found {}", &r)),
-    },
-    VarRef::Real(ref r) => match vars.get(r) {
-      Some(Variable::Lit(Real(f))) => Ok(Real(*f)),
-      Some(Variable::Lit(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      Some(Variable::Var(Var::RealGen)) => Ok(Str("to_do".to_owned())),
-      Some(Variable::Var(_)) => Err(format_err!("Type mismatch for variable reference {}", &r)),
-      None => Err(format_err!("Variable not found {}", &r)),
-    },
-  }
-}
-
-fn eval_spec(
-  spec: &HeaderValueSpec,
-  input_message: &Message,
-  vars: &Variables,
-) -> Result<HValue, Error> {
-  match spec {
-    HeaderValueSpec::Lit(l) => Ok(l.clone()),
-    HeaderValueSpec::VarRef(var_ref) => eval_var_ref(var_ref, input_message, vars),
-  }
-}
-
-impl Template<Headers> for HeadersSpec {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<Headers, Error> {
-    self
-      .iter()
-      .fold(Ok(Headers::new()), |acc: Result<Headers, Error>, (k, v)| {
-        let h = &mut acc?;
-        let value = eval_spec(v, input_message, vars)?;
-        h.insert(k.clone(), value);
-        Ok(h.clone())
-      })
-  }
-}
-
-impl Template<String> for PayloadTemplate {
-  fn fill(&self, input_message: &Message, vars: &Variables) -> Result<String, Error> {
-    Ok(String::from("")) // TODO: implement
   }
 }
 
@@ -276,19 +163,6 @@ fn to_amqp_props(headers: &Headers) -> BasicProperties {
     },
   );
   properties.with_headers(custom_headers)
-}
-
-impl From<Delivery> for Message {
-  fn from(delivery: Delivery) -> Message {
-    Message {
-      payload: delivery.data,
-      route: Route {
-        exchange: delivery.exchange,
-        routing_key: delivery.routing_key,
-      },
-      headers: to_headers_map(&delivery.properties),
-    }
-  }
 }
 
 fn to_hvalue(amqp_value: &AMQPValue) -> Option<HValue> {
@@ -471,10 +345,7 @@ where
       debug!("Elapsed! Sending a cross-task message over the channel");
       let value = value_fn();
       match value {
-        Ok(msg) => {
-          sender.send(msg);
-          Ok(())
-        }
+        Ok(msg) => Ok(sender.send(msg)),
         Err(e) => Err(e),
       }
     })

@@ -6,6 +6,7 @@ authors = ["Cyril Delmas <c.delmas@lectra.com>"]
 [lib]
 
 [dependencies]
+chrono = "0.4"
 failure = "0.1.5"
 cron = "0.6.0"
 futures = "0.1.25"
@@ -16,6 +17,7 @@ maplit = "1.0.1"
 nom = "4.2.1"
 rand = "0.6"
 rustache = "0.1.0"
+serde = "1.0.89"
 serde_json = "1.0.39"
 tokio = "0.1.15"
 uuid = {version="0.7.2", features= ["v4"]}
