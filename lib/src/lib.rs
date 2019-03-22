@@ -12,12 +12,13 @@ extern crate tokio;
 extern crate maplit;
 #[macro_use]
 extern crate nom;
-extern crate rand;
 extern crate mustache;
+extern crate rand;
+#[macro_use]
 extern crate serde;
 extern crate serde_json;
 extern crate uuid;
 
+mod config;
 pub mod model;
 pub mod server;
-mod util;

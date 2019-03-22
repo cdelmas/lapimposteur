@@ -378,22 +378,6 @@ fn create_client(
     .map(|(client, _)| client)
 }
 
-fn delay<T>(
-  seconds: u64,
-  value_fn: impl FnOnce() -> Result<T, Error>,
-) -> impl Future<Item = T, Error = Error>
-where
-  T: Send + Sync + 'static,
-{
-  Delay::new(Instant::now() + Duration::from_secs(seconds))
-    .then(move |_| {
-      debug!("Elapsed! Generating the message");
-      value_fn()
-    })
-    .map_err(Error::from)
-}
-
-// run should pass the imposter structure to bootstrap which will be in charge of interpreting it
 pub fn run() {
   info!("running server");
   let imposter = super::model::imposter::create_stub_imposter(); // TODO: load from config file
