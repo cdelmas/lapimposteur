@@ -215,7 +215,7 @@ pub fn create_stub_imposter() -> Imposter {
         action: vec![ActionSpec {
           to: RouteSpec {
             exchange: Some("bob-x".to_owned()),
-            routing_key: None,
+            routing_key: Some("r.k.2".to_owned()),
           },
           headers,
           variables,
@@ -230,7 +230,7 @@ pub fn create_stub_imposter() -> Imposter {
         action: vec![ActionSpec {
           to: RouteSpec {
             exchange: Some("bob-x".to_owned()),
-            routing_key: None,
+            routing_key: Some("r.k.2".to_owned()),
           },
           headers: HeadersSpec::new(),
           variables: VariablesSpec::new(),
@@ -460,81 +460,80 @@ fn eval_var_spec<E>(
 where
   E: Eval<i64> + Eval<String> + Eval<f64>,
 {
-  let variables = var_specs
-    .iter()
-    .fold(Ok(Variables::new()), |acc, (k, var_spec)| {
-      let mut vars = acc?;
-      let spec = var_spec.0.clone();
-      match spec {
-        Var::Lit(v) => {
-          vars.insert(k.clone(), v.clone());
-          Ok(vars)
-        }
-        x @ Var::StrHeader(_) => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::StrJsonPath(_) => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::StrGen(_) => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::Env(_) => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::UuidGen => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::DateTime => {
-          let s_val: String = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Str(s_val));
-          Ok(vars)
-        }
-        x @ Var::IntGen => {
-          let i_val: i64 = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Int(i_val));
-          Ok(vars)
-        }
-        x @ Var::IntHeader(_) => {
-          let i_val: i64 = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Int(i_val));
-          Ok(vars)
-        }
-        x @ Var::IntJsonPath(_) => {
-          let i_val: i64 = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Int(i_val));
-          Ok(vars)
-        }
-        x @ Var::Timestamp => {
-          let i_val: i64 = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Int(i_val));
-          Ok(vars)
-        }
-        x @ Var::RealGen => {
-          let r_val: f64 = evaluator.eval(&x, input_message)?;
-          vars.insert(k.clone(), Lit::Real(r_val));
-          Ok(vars)
-        }
-      }
-    })?;
-  // TODO: put this in head of the function
-  match input_message.get_reply_to() {
+  let variables = match input_message.get_reply_to() {
     Some(r) => {
+      let mut variables = Variables::new();
       variables.insert("reply_to".to_owned(), Lit::Str(r));
-      Ok(variables)
+      variables
     }
-    None => Ok(variables),
-  }
+    None => Variables::new(),
+  };
+
+  var_specs.iter().fold(Ok(variables), |acc, (k, var_spec)| {
+    let mut vars = acc?;
+    let spec = var_spec.0.clone();
+    match spec {
+      Var::Lit(v) => {
+        vars.insert(k.clone(), v.clone());
+        Ok(vars)
+      }
+      x @ Var::StrHeader(_) => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::StrJsonPath(_) => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::StrGen(_) => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::Env(_) => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::UuidGen => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::DateTime => {
+        let s_val: String = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Str(s_val));
+        Ok(vars)
+      }
+      x @ Var::IntGen => {
+        let i_val: i64 = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Int(i_val));
+        Ok(vars)
+      }
+      x @ Var::IntHeader(_) => {
+        let i_val: i64 = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Int(i_val));
+        Ok(vars)
+      }
+      x @ Var::IntJsonPath(_) => {
+        let i_val: i64 = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Int(i_val));
+        Ok(vars)
+      }
+      x @ Var::Timestamp => {
+        let i_val: i64 = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Int(i_val));
+        Ok(vars)
+      }
+      x @ Var::RealGen => {
+        let r_val: f64 = evaluator.eval(&x, input_message)?;
+        vars.insert(k.clone(), Lit::Real(r_val));
+        Ok(vars)
+      }
+    }
+  })
 }
 
 fn to_hash_map(vars: &Variables) -> Result<Data, Error> {
