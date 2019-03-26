@@ -1,57 +1,39 @@
 {
-  "connection": "amqp://localhost:5672/",
+  "connection": "amqp://bob:bob@localhost:5672/test",
   "reactors": [
     {
-      "queue": "q-1",
-      "exchange": "ex-1",
-      "routingKey": "r.k.1",
+      "queue": "bob-q-1",
+      "routing_key": "r.k.1",
+      "exchange": "bob-x",
       "action": [
         {
-          "to": {
-            "exchange": "can be empty for direct reply to",
-            "routing_key": "can be empty, so the reactor uses the reply_to property"
-          },
-          "headers": {
-            "custom_id": { "type": "Literal", "value": 3 },
-            "content_type": { "type": "Literal", "value": "application/json" },
-            "id": { "value": { "type": "Variable", "value": "{{ uuid }}" } }
-          },
+          "to": { "exchange": "bob-x", "routingKey": "r.k.2" },
           "variables": {
-            "n1": {
-              "type": "IntJsonPath",
-              "value": "$ex.toto.int"
-            },
-            "n1s": {
-              "type": "StrJsonPath",
-              "value": "$ex.toto.str"
-            },
             "uuid": { "type": "UuidGen" },
-            "int": { "type": "IntGen" },
-            "string": { "type": "StrGen" },
-            "real": { "type": "RealGen" },
-            "host": { "type": "Env", "value": "HOST" },
-            "corrId": { "type": "StrHeader", "value": "correlation_id" },
-            "priority": { "type": "IntHeader", "value": "priority" }
+            "message_id": { "type": "UuidGen" }
           },
-          "payload": "{ \"some\": \"stringified json\", \"id\": \"{{ uuid }}\", \"propInt\": {{ n1 }} }",
+          "payload": "{\"message\": \"mon id est: {{ uuid }}\"}",
+          "headers": {
+            "content_type": { "Lit": "application/json" },
+            "message_id": { "VarRef": { "Str": "message_id" } }
+          },
           "schedule": { "seconds": 0 }
         }
       ]
-    }
-  ],
-  "generators": [
+    },
     {
-      "cron": "* * * * 2",
-      "action": {
-        "to": {
-          "exchange": "out",
-          "rk": "r.k"
-        },
-        "headers": {},
-        "variables": { "id": { "type": "UuidGen" } },
-        "payload": "event-2 |id|",
-        "schedule": { "seconds": 2 }
-      }
+      "queue": "bob-q-2",
+      "routing_key": "r.k.1",
+      "exchange": "bob-x",
+      "action": [
+        {
+          "to": { "exchange": "bob-x", "routingKey": "r.k.2" },
+          "variables": {},
+          "payload": "Message en dur",
+          "headers": {},
+          "schedule": { "seconds": 0 }
+        }
+      ]
     }
   ]
 }

@@ -1,12 +1,77 @@
 use super::super::model::imposter::*;
-use serde_json::*;
+use failure::Error;
+use std::fs::File;
+use std::io::Read;
 
-// TODO: deserialize a complete imposter => create a function for that
+pub fn load(config_path: &str) -> Result<Imposter, Error> {
+  let mut file = File::open(config_path)?;
+  let mut contents = String::new();
+  file.read_to_string(&mut contents)?;
+  load_imposter(&contents)
+}
+
+fn load_imposter(data: &str) -> Result<Imposter, Error> {
+  serde_json::from_str(data).map_err(Error::from)
+}
 
 mod tests {
 
   use super::super::super::model::imposter::*;
   use super::*;
+
+  #[test]
+  fn should_deserialize_a_complete_imposter() {
+    let data = String::from(
+      r#"
+      {
+        "connection": "amqps://guest:guest@localhost:5672/test",
+        "reactors": [
+          {
+            "queue": "a-queue",
+            "routing_key": "a.routing.key",
+            "exchange": "an.exchange",
+            "action": [
+              { 
+                "to": { "exchange": "x", "routingKey": "r.k" },
+                "variables": {},
+                "payload": "Hello",
+                "headers": {
+                  "content_type": {"Lit": "application/json"}
+                },
+                "schedule": { "seconds": 0 }
+              }
+            ]
+          }
+        ]
+      }
+    "#,
+    );
+
+    let value: Imposter = load_imposter(&data).unwrap();
+
+    assert_eq!(
+      Imposter {
+        connection: "amqps://guest:guest@localhost:5672/test".to_owned(),
+        reactors: vec![ReactorSpec {
+          queue: "a-queue".to_owned(),
+          exchange: "an.exchange".to_owned(),
+          routing_key: "a.routing.key".to_owned(),
+          action: vec![ActionSpec {
+            to: RouteSpec {
+              exchange: Some("x".to_owned()),
+              routing_key: Some("r.k".to_owned())
+            },
+            variables: hashmap! {},
+            payload: "Hello".to_owned(),
+            headers: hashmap! { "content_type".to_owned() => HeaderValueSpec::Lit(Lit::Str("application/json".to_owned())) },
+            schedule: ScheduleSpec { seconds: 0 },
+          }]
+        }],
+        generators: vec![],
+      },
+      value
+    );
+  }
 
   #[test]
   fn should_deserialize_lit_int() {

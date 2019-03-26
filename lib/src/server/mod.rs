@@ -1,3 +1,4 @@
+use super::config::io;
 use cron::Schedule;
 use failure::{err_msg, Error};
 use futures::future::lazy;
@@ -378,8 +379,9 @@ fn create_client(
     .map(|(client, _)| client)
 }
 
-pub fn run() {
+pub fn run(config_file_path: &str) {
   info!("running server");
-  let imposter = super::model::imposter::create_stub_imposter(); // TODO: load from config file
+  trace!("Loading config file: {}", config_file_path);
+  let imposter = io::load(config_file_path).unwrap();
   bootstrap(imposter);
 }
