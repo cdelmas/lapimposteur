@@ -318,4 +318,67 @@ mod tests {
     );
   }
 
+  #[test]
+  fn should_deserialize_a_reactor_spec() {
+    let data = r#"
+      {
+        "queue": "a-queue",
+        "routing_key": "a.routing.key",
+        "exchange": "an.exchange",
+        "action": [
+          { 
+            "to": { "exchange": "x", "routingKey": "r.k" },
+            "variables": {},
+            "payload": "Hello",
+            "headers": {
+              "content_type": {"Lit": "application/json"}
+            },
+            "schedule": { "seconds": 0 }
+          }
+        ]
+      }
+    "#;
+
+    let value: ReactorSpec = serde_json::from_str(data).unwrap();
+
+    assert_eq!(
+      ReactorSpec {
+        queue: "a-queue".to_owned(),
+        exchange: "an.exchange".to_owned(),
+        routing_key: "a.routing.key".to_owned(),
+        action: vec![ActionSpec {
+          to: RouteSpec {
+            exchange: Some("x".to_owned()),
+            routing_key: Some("r.k".to_owned())
+          },
+          variables: hashmap! {},
+          payload: "Hello".to_owned(),
+          headers: hashmap! { "content_type".to_owned() => HeaderValueSpec::Lit(Lit::Str("application/json".to_owned())) },
+          schedule: ScheduleSpec { seconds: 0 },
+        }]
+      },
+      value
+    );
+  }
+
+  #[test]
+  fn should_deserialize_a_do_nothing_imposter() {
+    let data = r#"
+      {
+        "connection": "amqps://guest:guest@localhost:5672/test",
+        "reactors": []
+      }
+    "#;
+
+    let value: Imposter = serde_json::from_str(data).unwrap();
+
+    assert_eq!(
+      Imposter {
+        connection: "amqps://guest:guest@localhost:5672/test".to_owned(),
+        reactors: vec![],
+        generators: vec![],
+      },
+      value
+    );
+  }
 }

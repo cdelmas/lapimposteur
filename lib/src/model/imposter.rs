@@ -21,14 +21,15 @@ pub type QueueName = String;
 pub type ExchangeName = String;
 pub type RoutingKey = String;
 
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct Imposter {
-  // TODO: test deserialize
   pub connection: Connection,
   pub reactors: Vec<ReactorSpec>,
+  #[serde(skip)] // TODO: add later
   pub generators: Vec<GeneratorSpec>,
 }
 
-#[derive(Clone, Debug, PartialEq)] // TODO: test deserialize
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct ReactorSpec {
   pub queue: QueueName,
   pub exchange: ExchangeName,
@@ -190,7 +191,6 @@ fn current_time() -> i64 {
 
 pub fn create_stub_imposter() -> Imposter {
   // DELETE when config is loaded from file
-  // TODO: add variables spec to be transformed into Variables, which become a simple map of Literal values
   let mut variables = VariablesSpec::new();
   variables.insert(
     "uuid".to_owned(),
@@ -263,6 +263,7 @@ pub struct Route {
 
 pub type CronExpr = String;
 
+#[derive(PartialEq, Debug, Deserialize)]
 pub struct GeneratorSpec {
   pub cron: CronExpr,
   pub action: Vec<ActionSpec>,
