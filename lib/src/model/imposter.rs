@@ -1,3 +1,4 @@
+use super::super::util::read_file;
 use chrono::*;
 use failure::{err_msg, Error};
 use jsonpath::Selector;
@@ -189,63 +190,6 @@ fn current_time() -> i64 {
   now().timestamp_nanos()
 }
 
-pub fn create_stub_imposter() -> Imposter {
-  // DELETE when config is loaded from file
-  let mut variables = VariablesSpec::new();
-  variables.insert(
-    "uuid".to_owned(),
-    VarSpec::new(Var::Lit(Lit::Str("12345678-abcdef".to_owned()))),
-  );
-  let mut headers = HeadersSpec::new();
-  headers.insert(
-    "content_type".to_owned(),
-    HeaderValueSpec::Lit(Lit::Str("application/json".to_owned())),
-  );
-  headers.insert(
-    "message_id".to_owned(),
-    HeaderValueSpec::VarRef(VarRef::Str("uuid".to_owned())),
-  );
-  Imposter {
-    connection: "amqp://bob:bob@localhost:5672/test?heartbeat=20".to_owned(),
-    reactors: vec![
-      ReactorSpec {
-        queue: "bob-q-1".to_owned(),
-        exchange: "bob-x".to_owned(),
-        routing_key: "r.k.1".to_owned(),
-        action: vec![ActionSpec {
-          to: RouteSpec {
-            exchange: Some("bob-x".to_owned()),
-            routing_key: Some("r.k.2".to_owned()),
-          },
-          headers,
-          variables,
-          payload: "mon id est: {{ uuid }}".to_owned(),
-          schedule: ScheduleSpec { seconds: 3 },
-        }],
-      },
-      ReactorSpec {
-        queue: "bob-q-2".to_owned(),
-        exchange: "bob-x".to_owned(),
-        routing_key: "r.k.1".to_owned(),
-        action: vec![ActionSpec {
-          to: RouteSpec {
-            exchange: Some("bob-x".to_owned()),
-            routing_key: Some("r.k.2".to_owned()),
-          },
-          headers: HeadersSpec::new(),
-          variables: VariablesSpec::new(),
-          payload: "Message en dur".to_owned(),
-          schedule: ScheduleSpec { seconds: 0 },
-        }],
-      },
-    ],
-    generators: vec![GeneratorSpec {
-      cron: "".to_owned(),
-      action: vec![],
-    }],
-  }
-}
-
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteSpec {
@@ -269,7 +213,11 @@ pub struct GeneratorSpec {
   pub action: Vec<ActionSpec>,
 }
 
-pub type PayloadTemplate = String;
+#[derive(PartialEq, Clone, Debug, Deserialize)]
+pub enum PayloadTemplate {
+  Inline(String),
+  File(String),
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct ScheduleSpec {
@@ -436,7 +384,11 @@ impl Template<Headers> for HeadersSpec {
 impl Template<String> for PayloadTemplate {
   fn fill(&self, vars: &Variables) -> Result<String, Error> {
     let data = to_hash_map(vars)?;
-    let template = compile_str(self)?;
+    let payload = match self {
+      PayloadTemplate::Inline(s) => Ok(s.clone()),
+      PayloadTemplate::File(p) => read_file(p),
+    }?;
+    let template = compile_str(&payload)?;
     let mut out = Cursor::new(Vec::new());
     template.render_data(&mut out, &data)?;
     String::from_utf8(out.into_inner()).map_err(Error::from)

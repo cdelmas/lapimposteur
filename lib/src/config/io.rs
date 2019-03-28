@@ -1,13 +1,10 @@
 use super::super::model::imposter::*;
+use super::super::util::read_file;
 use failure::Error;
-use std::fs::File;
-use std::io::Read;
 
 pub fn load(config_path: &str) -> Result<Imposter, Error> {
-  let mut file = File::open(config_path)?;
-  let mut contents = String::new();
-  file.read_to_string(&mut contents)?;
-  load_imposter(&contents)
+  let config = read_file(config_path)?;
+  load_imposter(&config)
 }
 
 fn load_imposter(data: &str) -> Result<Imposter, Error> {
@@ -34,7 +31,7 @@ mod tests {
               { 
                 "to": { "exchange": "x", "routingKey": "r.k" },
                 "variables": {},
-                "payload": "Hello",
+                "payload": { "Inline": "Hello" },
                 "headers": {
                   "content_type": {"Lit": "application/json"}
                 },
@@ -62,7 +59,7 @@ mod tests {
               routing_key: Some("r.k".to_owned())
             },
             variables: hashmap! {},
-            payload: "Hello".to_owned(),
+            payload: PayloadTemplate::Inline("Hello".to_owned()),
             headers: hashmap! { "content_type".to_owned() => HeaderValueSpec::Lit(Lit::Str("application/json".to_owned())) },
             schedule: ScheduleSpec { seconds: 0 },
           }]
@@ -355,7 +352,7 @@ mod tests {
           "k": { "type": "UuidGen" },
           "input.data.id": {"type":"StrJsonPath", "param": "input.path"}
         },
-        "payload": "{ \"value\": {{ k }} }",
+        "payload": { "Inline": "{ \"value\": {{ k }} }" },
         "headers": {
           "header.str": { "VarRef": { "Str": "input.data.id" } }
         },
@@ -375,7 +372,7 @@ mod tests {
           "k".to_owned() => VarSpec::new(Var::UuidGen),
           "input.data.id".to_owned() => VarSpec::new(Var::StrJsonPath("input.path".to_owned()))
         },
-        payload: "{ \"value\": {{ k }} }".to_owned(),
+        payload: PayloadTemplate::Inline("{ \"value\": {{ k }} }".to_owned()),
         headers: hashmap! { "header.str".to_owned() => HeaderValueSpec::VarRef(VarRef::Str("input.data.id".to_owned())) },
         schedule: ScheduleSpec { seconds: 3 },
       },
@@ -394,7 +391,7 @@ mod tests {
           { 
             "to": { "exchange": "x", "routingKey": "r.k" },
             "variables": {},
-            "payload": "Hello",
+            "payload": { "Inline": "Hello" },
             "headers": {
               "content_type": {"Lit": "application/json"}
             },
@@ -417,7 +414,7 @@ mod tests {
             routing_key: Some("r.k".to_owned())
           },
           variables: hashmap! {},
-          payload: "Hello".to_owned(),
+          payload: PayloadTemplate::Inline("Hello".to_owned()),
           headers: hashmap! { "content_type".to_owned() => HeaderValueSpec::Lit(Lit::Str("application/json".to_owned())) },
           schedule: ScheduleSpec { seconds: 0 },
         }]

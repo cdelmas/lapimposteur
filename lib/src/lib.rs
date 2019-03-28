@@ -22,3 +22,4 @@ extern crate uuid;
 mod config;
 pub mod model;
 pub mod server;
+mod util;

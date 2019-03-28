@@ -12,7 +12,7 @@
             "uuid": { "type": "UuidGen" },
             "message_id": { "type": "UuidGen" }
           },
-          "payload": "{\"message\": \"mon id est: {{ uuid }}\"}",
+          "payload": { "Inline": "{\"message\": \"mon id est: {{ uuid }}\"}" },
           "headers": {
             "content_type": { "Lit": "application/json" },
             "message_id": { "VarRef": { "Str": "message_id" } }
@@ -29,7 +29,7 @@
         {
           "to": { "exchange": "bob-x", "routingKey": "r.k.2" },
           "variables": {},
-          "payload": "Message en dur",
+          "payload": { "Inline": "Message en dur" },
           "headers": {},
           "schedule": { "seconds": 0 }
         }
