@@ -30,7 +30,9 @@
           "to": { "exchange": "bob-x", "routingKey": "r.k.2" },
           "variables": {},
           "payload": { "Inline": "Message en dur" },
-          "headers": {},
+          "headers": {
+            "content_type": { "Lit": "text/plain" }
+          },
           "schedule": { "seconds": 0 }
         }
       ]

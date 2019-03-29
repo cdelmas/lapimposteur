@@ -212,7 +212,7 @@ Here is the exhaustive list of variables specifications:
 }
 ```
 
-You can either set a literal (hardcoded) value, using `{ "Lit": "theValue" }` or `{ "Lit": 42 }`, or a reference to a variable, using `{ "VarRef": { "Str": "message_id" } }` or `{ "VarRef": { "Int": "index" } }`.
+You can either set a literal (hardcoded) value, using `{ "Lit": "theValue" }` or `{ "Lit": 42 }`, or a reference to a variable, using `{ "VarRef": { "Str": "message_id" } }` or `{ "VarRef": { "Int": 69 } }`.
 
 :warning: the types of variable references must match the declared type of the variable, or the reactor will fail.
 
@@ -270,18 +270,11 @@ To run the example:
 
 - start RabbitMQ: `examples/run-rabbit.sh`
 - then setup RabbitMQ: `examples/rabbit_setup.sh`
-- start a client: `docker exec -it rabbit sh`, in which you can bind a queue with:
-
-```
-rabbitmqadmin declare queue name=client durable=false -V test -u admin -p king
-rabbitmqadmin declare binding source=bob-x destination_type=queue destination=client routing_key=r.k.2 -V test -u admin -p king
-```
-
-- run Lapimposteur: `docker run -it --network=host --name lapimposteur -e RUST_LOG=lapimposteur_lib=trace -v $(pwd)/examples:/conf lapimposteur:0 -c /conf/config.json`
-- send messages from the client: `rabbitmqadmin publish exchange=bob-x routing_key=r.k.1 payload="hello, world" -V test -u admin -p king` multiple times (see the logs in the Lapimposteur console)
-- get responses back: `rabbitmqadmin get queue=client -V test -u admin -p king`
-
-Some messages can take time to be visible for the client, so be patient.
+- setup a client: `examples/rabbit_client.sh`
+- run Lapimposteur: `examples/run.sh`
+- send messages from the client: `examples/client_send.sh` multiple times (see the logs in the Lapimposteur console)
+- get responses back: `examples/client_get.sh` (you may need to execute it more than once, as it only get the last 10 messages, then ack them)
+- once you are done, stop Lapimposteur `examples/stop.sh`, then RabbitMQ `examples/stop-rabbit.sh`
 
 ## Troubleshooting
 
