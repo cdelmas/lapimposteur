@@ -12,7 +12,7 @@
             "uuid": { "type": "UuidGen" },
             "message_id": { "type": "UuidGen" }
           },
-          "payload": { "Inline": "{\"message\": \"mon id est: {{ uuid }}\"}" },
+          "payload": { "File": "/cnf/payload.tpl" },
           "headers": {
             "content_type": { "Lit": "application/json" },
             "message_id": { "VarRef": { "Str": "message_id" } }
