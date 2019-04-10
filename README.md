@@ -184,14 +184,14 @@ Here is the exhaustive list of variables specifications:
 - `{ "type": "RealGen" }` generates a random real number
 - `{ "type": "DateTime" }` gives the current time, formatted as an ISO string
 - `{ "type": "Timestamp" }` gives the current time as a number
-- `{ "type": "Lit", param: { "Str": "value" } }` gives the literal string `"value"`
-- `{ "type": "Lit", param: { "Int": 42 } }` gives the literal int `42`
-- `{ "type": "Lit", param: { "Real": 1.2 } }` gives the literal real number `1.2`
-- `{ "type": "IntHeader", param: "headerName" }` gives the int value of the incoming message's header `headerName`
-- `{ "type": "StrHeader", param: "headerName" }` gives the string value of the incoming message's header `headerName`
-- `{ "type": "Env", param: "HOST" }` gives the string value of the environment variable `HOST`
-- `{ "type": "StrJsonPath", param: "$.value" }` gives the string value extracted from the incoming message's body using the json path `$.value`
-- `{ "type": "IntJsonPath", param: "$.value" }` gives the int value extracted from the incoming message's body using the json path `$.value`
+- `{ "type": "Lit", "param": { "Str": "value" } }` gives the literal string `"value"`
+- `{ "type": "Lit", "param": { "Int": 42 } }` gives the literal int `42`
+- `{ "type": "Lit", "param": { "Real": 1.2 } }` gives the literal real number `1.2`
+- `{ "type": "IntHeader", "param": "headerName" }` gives the int value of the incoming message's header `headerName`
+- `{ "type": "StrHeader", "param": "headerName" }` gives the string value of the incoming message's header `headerName`
+- `{ "type": "Env", "param": "HOST" }` gives the string value of the environment variable `HOST`
+- `{ "type": "StrJsonPath", "param": "$.value" }` gives the string value extracted from the incoming message's body using the json path `$.value`
+- `{ "type": "IntJsonPath", "param": "$.value" }` gives the int value extracted from the incoming message's body using the json path `$.value`
 
 ##### Headers
 
