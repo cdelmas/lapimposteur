@@ -4,38 +4,56 @@ A RabbitMQ Imposter, able to stub amqp consumers by reacting to messages, and pu
 
 :warning: this project is under active development, and currently unstable.
 
+This program is distributed under the terms of the GNU GPL-3.0 or later license.
+
 ## Purpose
 
 Lapimposteur is a generic "over-the-wire" amqp stub, that can stub any microservice, allowing full-local development.
 
 ## Usage
 
-### Prerequisites
+You need to build Lapimposteur to run it. You can use either cargo or Docker for this purpose.
 
-You need [Docker](https://docs.docker.com/install/) to run Lapimposteur. If you want to build it yourself, please refer to the Contributing section.
+### Build and run
+
+#### Using Docker
+
+Install [Docker](https://docs.docker.com/install/).
 
 Then, build an image using
 
 ```
-docker build --network=host -t lapimposteur:0 .
+docker build -t lapimposteur:0 .
 ```
 
 This can take time on the first build.
 
-### Command line
-
-Running Lapimposteur is as easy as a command line:
+Then, running Lapimposteur is as easy as a command line:
 
 ```
-docker run -it --network=host --name lapimposteur -e RUST_LOG=lapimposteur_lib=trace -v $(pwd)/examples:/conf lapimposteur:0 -c /conf/config.json
+docker run -it --name lapimposteur -e RUST_LOG=lapimposteur_lib=trace -v $(pwd)/examples:/conf lapimposteur:0 -c /conf/config.json
 ```
-
-:bulb: You won't need `--network=host` on Windows, as it is the default behaviour.
 
 Some explanations about this command line:
 
 - you need to mount a volume to give access to the config file
 - you can configure the logging levels using the [`RUST_LOG`](https://docs.rs/env_logger/*/env_logger/) environment variable
+
+#### Using cargo
+
+Install [rustup](https://rustup.rs/).
+
+Build using cargo:
+
+```
+cargo build
+```
+
+Then, finally run it:
+
+```
+RUST_LOG=lapimposteur_lib=trace cargo run -- -c /conf/config.json
+```
 
 ### Configuration
 
@@ -282,23 +300,21 @@ Logs should give you enough information about problems. If not, please file an i
 
 ## Contributing
 
-TODO: extract to a new file
-
 ### How to request a feature?
 
-TODO
+If you feel Lapimposteur need an improvement, please open an issue.
 
 ### How to file a bug?
 
-TODO
+If you feel Lapimposteur has some king of bug, please open an issue.
 
 ### How to add a feature or fix a bug?
 
-TODO
+Just fork Lapimposteur, and open a pull request.
 
 ### How to build?
 
-TODO
+Lapimposteur is a [Rust](https://www.rust-lang.org/) program, so use `cargo` to build it.
 
 ### Architecture
 
